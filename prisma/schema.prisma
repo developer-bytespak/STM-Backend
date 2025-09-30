@@ -1,15 +1,389 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum RetentionStatus {
+  new
+  returning
+  churned
+}
+
+enum ProviderTier {
+  Bronze
+  Silver
+  Gold
+  PESP
+}
+
+enum ProviderStatus {
+  active
+  inactive
+  banned
+}
+
+enum LSMStatus {
+  active
+  inactive
+}
+
+enum JobStatus {
+  pending
+  assigned
+  in_progress
+  completed
+  cancelled
+}
+
+enum PaymentType {
+  service_job
+  office_booking
+  refund
+}
+
+enum PaymentMethod {
+  credit_card
+  bank_transfer
+  paypal
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+}
+
+enum InvoiceStatus {
+  Unpaid
+  Paid
+}
+
+enum RefundReason {
+  customer_request
+  provider_cancel
+  dispute
+  error
+}
+
+enum RefundStatus {
+  pending
+  approved
+  rejected
+}
+
+enum OfficeSpaceStatus {
+  active
+  inactive
+}
+
+enum BookingStatus {
+  Booked
+  Cancelled
+  Completed
+}
+
+enum MessageType {
+  text
+  image
+  document
+}
+
+enum CallStatus {
+  completed
+  busy
+  no_answer
+  failed
+}
+
+enum NotificationType {
+  job
+  payment
+  message
+  system
+  rating
+  feedback
+}
+
+enum NotificationChannel {
+  in_app
+  email
+  sms
+}
+
+model customers {
+  id                         Int                          @id @default(autoincrement())
+  first_name                 String                       @db.VarChar(255)
+  last_name                  String                       @db.VarChar(255)
+  email                      String                       @unique @db.VarChar(255)
+  phone_number               String                       @db.VarChar(15)
+  address                    String                       @db.Text
+  created_at                 DateTime                     @default(now())
+  updated_at                 DateTime                     @updatedAt
+  jobs                       jobs[]
+  ratings_feedback           ratings_feedback[]
+  customer_retention_metrics customer_retention_metrics[]
+  office_bookings            office_bookings[]
+  chats                      chat[]
+  messages                   messages[]
+  notifications              notifications[]              @relation("customer_notifications")
+}
+
+model customer_retention_metrics {
+  id                  String           @id @default(uuid()) @db.Uuid
+  customer_id         Int
+  customer            customers        @relation(fields: [customer_id], references: [id])
+  first_job_date      DateTime         @db.Timestamp(6)
+  last_job_date       DateTime         @db.Timestamp(6)
+  total_jobs          Int              @default(0)
+  total_spent         Decimal          @default(0.00) @db.Decimal(12, 2)
+  retention_status    RetentionStatus
+  days_since_last_job Int              @default(0)
+  created_at          DateTime         @default(now()) @db.Timestamp(6)
+}
+
+model service_providers {
+  id                    Int                    @id @default(autoincrement())
+  first_name            String                 @db.VarChar(255)
+  last_name             String                 @db.VarChar(255)
+  email                 String                 @unique @db.VarChar(255)
+  phone_number          String                 @db.VarChar(15)
+  service_type          Json
+  experience            Int
+  Description           String?                @db.Text
+  rating                Decimal                @default(0.00) @db.Decimal(3, 2)
+  tier                  ProviderTier
+  location              String                 @db.VarChar(255)
+  min_price             Int
+  max_price             Int
+  is_active             Boolean                @default(true)
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @updatedAt
+  status                ProviderStatus         @default(active)
+  lsm_id                Int
+  local_service_manager local_service_managers @relation(fields: [lsm_id], references: [id])
+  earning               Decimal                @default(0.00) @db.Decimal(10, 2)
+  total_jobs            Int                    @default(0)
+  jobs                  jobs[]
+  performance_metrics   performance_metrics[]
+  office_bookings       office_bookings[]
+  chats                 chat[]
+  notifications         notifications[]        @relation("provider_notifications")
+}
+
+model local_service_managers {
+  id                 Int                 @id @default(autoincrement())
+  first_name         String              @db.VarChar(255)
+  last_name          String              @db.VarChar(255)
+  email              String              @unique @db.VarChar(255)
+  phone_number       String              @db.VarChar(15)
+  region             String              @db.VarChar(255)
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+  status             LSMStatus           @default(active)
+  closed_deals_count Int                 @default(0)
+  earnings           Decimal             @default(0.00) @db.Decimal(10, 2)
+  rating             Int                 @default(0)
+  service_providers  service_providers[]
+  lsm_logs           LSM_logs[]
+  refunds            refunds[]
+  chats              chat[]
+  notifications      notifications[]     @relation("lsm_notifications")
+}
+
+model admin {
+  id              Int      @id @default(autoincrement())
+  first_name      String   @db.VarChar(255)
+  last_name       String   @db.VarChar(255)
+  email           String   @unique @db.VarChar(255)
+  churn_threshold Int
+  phone_number    String   @db.VarChar(15)
+  created_at      DateTime @default(now())
+}
+
+model jobs {
+  id               Int                @id @default(autoincrement())
+  customer_id      Int
+  customer         customers          @relation(fields: [customer_id], references: [id])
+  provider_id      Int
+  service_provider service_providers  @relation(fields: [provider_id], references: [id])
+  description      String             @db.VarChar(255)
+  status           JobStatus          @default(pending)
+  service_type     String             @db.Text
+  scheduled_at     DateTime
+  completed_at     DateTime?
+  price            Decimal            @db.Decimal(10, 2)
+  location         String             @db.VarChar(255)
+  visit_required   Boolean            @default(false)
+  created_at       DateTime           @default(now())
+  updated_at       DateTime           @updatedAt
+  ratings_feedback ratings_feedback[]
+  payments         payments[]
+  chats            chat[]
+  call_logs        call_logs[]
+}
+
+model ratings_feedback {
+  id                 Int       @id @default(autoincrement())
+  job_id             Int
+  job                jobs      @relation(fields: [job_id], references: [id])
+  customer_id        Int
+  customer           customers @relation(fields: [customer_id], references: [id])
+  rating             Int
+  feedback           String    @db.Text
+  punctuality_rating Int
+  response_time      Int
+  created_at         DateTime  @default(now())
+}
+
+model performance_metrics {
+  id                Int               @id @default(autoincrement())
+  provider_id       Int
+  service_provider  service_providers @relation(fields: [provider_id], references: [id])
+  job_count         Int               @default(0)
+  avg_rating        Decimal           @default(0.00) @db.Decimal(3, 2)
+  punctuality_score Decimal           @default(0.00) @db.Decimal(3, 2)
+  avg_response_time Decimal           @default(0.00) @db.Decimal(5, 2)
+  created_at        DateTime          @default(now())
+}
+
+model payments {
+  id             Int            @id @default(autoincrement())
+  office_id      Int?
+  office_space   office_spaces? @relation(fields: [office_id], references: [id])
+  job_id         Int?
+  job            jobs?          @relation(fields: [job_id], references: [id])
+  payment_type   PaymentType
+  amount         Decimal        @db.Decimal(10, 2)
+  payment_method PaymentMethod
+  payment_status PaymentStatus  @default(pending)
+  payment_date   DateTime
+  invoices       invoices[]
+  refunds        refunds[]
+}
+
+model invoices {
+  invoice_id     Int           @id @default(autoincrement())
+  payment_id     Int
+  payment        payments      @relation(fields: [payment_id], references: [id])
+  amount         Decimal       @db.Decimal(10, 2)
+  pay_date       DateTime
+  invoice_status InvoiceStatus @default(Unpaid)
+  created_at     DateTime      @default(now())
+}
+
+model refunds {
+  refund_id             String                  @id @default(uuid()) @db.Uuid
+  payment_id            Int
+  payment               payments                @relation(fields: [payment_id], references: [id])
+  refund_amount         Decimal                 @db.Decimal(10, 2)
+  refund_reason         RefundReason
+  reason_description    String?                 @db.Text
+  status                RefundStatus            @default(pending)
+  processed_by          Int?
+  local_service_manager local_service_managers? @relation(fields: [processed_by], references: [id])
+  processed_at          DateTime?               @db.Timestamp(6)
+  created_at            DateTime                @default(now()) @db.Timestamp(6)
+}
+
+model LSM_logs {
+  id                    Int                    @id @default(autoincrement())
+  lsm_id                Int
+  local_service_manager local_service_managers @relation(fields: [lsm_id], references: [id])
+  action_type           String                 @db.VarChar(255)
+  description           String                 @db.Text
+  created_at            DateTime               @default(now())
+}
+
+model office_spaces {
+  id              Int                 @id @default(autoincrement())
+  Owner_name      String              @db.VarChar(255) // May be removed later
+  address         String              @db.Text
+  price           Decimal             @db.Decimal(10, 2)
+  size            String              @db.VarChar(255)
+  region          String              @db.VarChar(255)
+  status          OfficeSpaceStatus   @default(active)
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+  office_bookings office_bookings[]
+  payments        payments[]
+}
+
+model office_bookings {
+  booking_id       Int               @id @default(autoincrement())
+  provider_id      Int
+  service_provider service_providers @relation(fields: [provider_id], references: [id])
+  customer_id      Int? // May be removed later
+  customer         customers?        @relation(fields: [customer_id], references: [id])
+  office_id        Int
+  office_space     office_spaces     @relation(fields: [office_id], references: [id])
+  booking_from     DateTime
+  booking_until    DateTime
+  price            Decimal           @db.Decimal(10, 2)
+  status           BookingStatus     @default(Booked)
+}
+
+model market_data {
+  id            Int      @id @default(autoincrement())
+  region        String   @db.VarChar(255)
+  service_type  String   @db.VarChar(255)
+  average_price Decimal  @db.Decimal(10, 2)
+  demand_trend  String   @db.Text
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+}
+
+model chat {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  job_id                Int?
+  job                   jobs?                   @relation(fields: [job_id], references: [id])
+  customer_id           Int
+  customer              customers               @relation(fields: [customer_id], references: [id])
+  provider_id           Int
+  service_provider      service_providers       @relation(fields: [provider_id], references: [id])
+  lsm_id                Int? // May be removed later
+  local_service_manager local_service_managers? @relation(fields: [lsm_id], references: [id])
+  is_active             Boolean                 @default(true)
+  created_at            DateTime                @default(now()) @db.Timestamp(6)
+  messages              messages[]
+}
+
+model messages {
+  message_id   String      @id @default(uuid()) @db.Uuid
+  chat_id      String      @db.Uuid
+  chat         chat        @relation(fields: [chat_id], references: [id])
+  sender_id    Int
+  customer     customers   @relation(fields: [sender_id], references: [id])
+  message      String?     @db.Text
+  file         Bytes?
+  message_type MessageType @default(text)
+  created_at   DateTime    @default(now()) @db.Timestamp(6)
+}
+
+model call_logs {
+  call_id       String     @id @default(uuid()) @db.Uuid
+  job_id        Int?
+  job           jobs?      @relation(fields: [job_id], references: [id])
+  call_sid      String?    @db.VarChar(100)
+  call_duration Int        @default(0)
+  call_status   CallStatus
+  created_at    DateTime   @default(now()) @db.Timestamp(6)
+}
+
+model notifications {
+  notification_id       String                  @id @default(uuid()) @db.Uuid
+  customer_id           Int?
+  customer              customers?              @relation("customer_notifications", fields: [customer_id], references: [id])
+  provider_id           Int?
+  service_provider      service_providers?      @relation("provider_notifications", fields: [provider_id], references: [id])
+  lsm_id                Int?
+  local_service_manager local_service_managers? @relation("lsm_notifications", fields: [lsm_id], references: [id])
+  notification_type     NotificationType
+  title                 String                  @db.VarChar(255)
+  message               String                  @db.Text
+  channel               NotificationChannel
+  created_at            DateTime                @default(now()) @db.Timestamp(6)
 }
