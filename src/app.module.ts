@@ -7,16 +7,20 @@ import { AppService } from './app.service';
 
 // Import all modules
 import { OAuthModule } from './modules/oauth/oauth.module';
-import { UserManagementModule } from './modules/user-management/user-management.module';
+import { UsersModule } from './modules/users/users.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { ProvidersModule } from './modules/providers/providers.module';
+import { LsmModule } from './modules/lsm/lsm.module';
 import { ProviderOnboardingModule } from './modules/provider-onboarding/provider-onboarding.module';
 import { JobManagementModule } from './modules/job-management/job-management.module';
-import { CommunicationModule } from './modules/communication/communication.module';
-import { SearchMatchingModule } from './modules/search-matching/search-matching.module';
-import { PaymentModule } from './modules/payment/payment.module';
-import { RatingsFeedbackModule } from './modules/ratings-feedback/ratings-feedback.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ServicesModule } from './modules/services/services.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { RatingsModule } from './modules/ratings/ratings.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { OfficeRealEstateModule } from './modules/office-real-estate/office-real-estate.module';
-import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
+import { OfficeSpacesModule } from './modules/office-spaces/office-spaces.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -31,16 +35,20 @@ import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.
     ]),
     // Core modules
     OAuthModule,
-    UserManagementModule,
+    UsersModule,
+    CustomersModule,
+    ProvidersModule,
+    LsmModule,
     ProviderOnboardingModule,
     JobManagementModule,
-    CommunicationModule,
-    SearchMatchingModule,
-    PaymentModule,
-    RatingsFeedbackModule,
+    ChatModule,
+    NotificationsModule,
+    ServicesModule,
+    PaymentsModule,
+    RatingsModule,
     AnalyticsModule,
-    OfficeRealEstateModule,
-    AdminDashboardModule,
+    OfficeSpacesModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
