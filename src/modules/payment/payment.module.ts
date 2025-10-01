@@ -1,2 +1,9 @@
-// Payment Module - Financial management and payment processing
-// TODO: Implement Stripe/PayPal integration, invoicing, earnings tracking, commission management
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class PaymentModule {}

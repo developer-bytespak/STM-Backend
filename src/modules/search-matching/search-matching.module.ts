@@ -1,2 +1,9 @@
-// Search & Matching Module - AI-based provider matching and search
-// TODO: Implement search functionality, AI matching, filtering, ranking
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class SearchMatchingModule {}

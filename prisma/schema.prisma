@@ -533,6 +533,11 @@ model users {
   service_provider      service_providers?
   local_service_manager local_service_managers?
   admin                 admin?
+  password          String              @db.VarChar(255)
+  refresh_token     String?             @db.Text
+  is_email_verified Boolean             @default(false)
+  last_login        DateTime?
+  profile_picture   Bytes?
 }
 
 model customers {

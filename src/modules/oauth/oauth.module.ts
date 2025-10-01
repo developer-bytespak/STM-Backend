@@ -7,6 +7,7 @@ import { OAuthService } from './oauth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { OTPStrategy } from './strategies/otp.strategy';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { OTPStrategy } from './strategies/otp.strategy';
     }),
   ],
   controllers: [OAuthController],
-  providers: [OAuthService, JwtStrategy, LocalStrategy, OTPStrategy],
+  providers: [OAuthService, JwtStrategy, LocalStrategy, OTPStrategy, PrismaService],
   exports: [OAuthService, JwtModule],
 })
 export class OAuthModule {}

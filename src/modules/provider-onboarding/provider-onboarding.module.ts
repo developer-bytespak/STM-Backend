@@ -1,2 +1,9 @@
-// Provider Onboarding Module - Provider registration and verification
-// TODO: Implement provider onboarding workflow, document verification, tier classification
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class ProviderOnboardingModule {}

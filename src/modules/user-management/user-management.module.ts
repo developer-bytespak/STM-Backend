@@ -1,2 +1,9 @@
-// User Management Module - Customer, Provider, Admin, LSM management
-// TODO: Implement user management module with all user types
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class UserManagementModule {}

@@ -1,2 +1,7 @@
-// Refresh Token DTO - Refresh token data transfer object
-// TODO: Implement refresh token DTO
+import { IsString, IsNotEmpty } from 'class-validator';
+
+export class RefreshTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  refreshToken: string;
+}

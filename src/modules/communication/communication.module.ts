@@ -1,2 +1,9 @@
-// Communication Module - Messaging and notification system
-// TODO: Implement messaging, notifications, call tracking, engagement metrics
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class CommunicationModule {}

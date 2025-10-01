@@ -1,2 +1,9 @@
-// Ratings & Feedback Module - Customer feedback and provider rating system
-// TODO: Implement feedback collection, rating system, review management, performance metrics
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class RatingsFeedbackModule {}

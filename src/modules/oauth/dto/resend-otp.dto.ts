@@ -1,2 +1,7 @@
-// Resend OTP DTO - Resend OTP request data transfer object
-// TODO: Implement resend OTP DTO
+import { IsString, IsNotEmpty, IsEmail } from 'class-validator';
+
+export class ResendOtpDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+}
