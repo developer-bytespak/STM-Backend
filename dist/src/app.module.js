@@ -14,16 +14,16 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const oauth_module_1 = require("./modules/oauth/oauth.module");
-const user_management_module_1 = require("./modules/user-management/user-management.module");
-const provider_onboarding_module_1 = require("./modules/provider-onboarding/provider-onboarding.module");
-const job_management_module_1 = require("./modules/job-management/job-management.module");
-const communication_module_1 = require("./modules/communication/communication.module");
-const search_matching_module_1 = require("./modules/search-matching/search-matching.module");
-const payment_module_1 = require("./modules/payment/payment.module");
-const ratings_feedback_module_1 = require("./modules/ratings-feedback/ratings-feedback.module");
+const users_module_1 = require("./modules/users/users.module");
+const providers_module_1 = require("./modules/providers/providers.module");
+const jobs_module_1 = require("./modules/jobs/jobs.module");
+const chat_module_1 = require("./modules/chat/chat.module");
+const notifications_module_1 = require("./modules/notifications/notifications.module");
+const payments_module_1 = require("./modules/payments/payments.module");
+const ratings_module_1 = require("./modules/ratings/ratings.module");
 const analytics_module_1 = require("./modules/analytics/analytics.module");
-const office_real_estate_module_1 = require("./modules/office-real-estate/office-real-estate.module");
-const admin_dashboard_module_1 = require("./modules/admin-dashboard/admin-dashboard.module");
+const office_spaces_module_1 = require("./modules/office-spaces/office-spaces.module");
+const admin_module_1 = require("./modules/admin/admin.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -40,16 +40,16 @@ exports.AppModule = AppModule = __decorate([
                 },
             ]),
             oauth_module_1.OAuthModule,
-            user_management_module_1.UserManagementModule,
-            provider_onboarding_module_1.ProviderOnboardingModule,
-            job_management_module_1.JobManagementModule,
-            communication_module_1.CommunicationModule,
-            search_matching_module_1.SearchMatchingModule,
-            payment_module_1.PaymentModule,
-            ratings_feedback_module_1.RatingsFeedbackModule,
+            users_module_1.UsersModule,
+            providers_module_1.ProvidersModule,
+            jobs_module_1.JobsModule,
+            chat_module_1.ChatModule,
+            notifications_module_1.NotificationsModule,
+            payments_module_1.PaymentsModule,
+            ratings_module_1.RatingsModule,
             analytics_module_1.AnalyticsModule,
-            office_real_estate_module_1.OfficeRealEstateModule,
-            admin_dashboard_module_1.AdminDashboardModule,
+            office_spaces_module_1.OfficeSpacesModule,
+            admin_module_1.AdminModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService, prisma_service_1.PrismaService],

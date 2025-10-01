@@ -48,7 +48,7 @@ const jwt_1 = require("@nestjs/jwt");
 const config_1 = require("@nestjs/config");
 const bcrypt = __importStar(require("bcryptjs"));
 const prisma_service_1 = require("../../../prisma/prisma.service");
-const user_role_enum_1 = require("../user-management/enums/user-role.enum");
+const user_role_enum_1 = require("../users/enums/user-role.enum");
 let OAuthService = class OAuthService {
     constructor(prisma, jwtService, configService) {
         this.prisma = prisma;

@@ -1,225 +1,367 @@
-# STM Backend Module Structure
+# STM Backend Architecture & API Design
 
-## Complete File Structure
+
+Project Structure
 
 ```
-src/modules/
-├── oauth/                                    # Authentication & Authorization
-│   ├── oauth.module.ts                      # Main OAuth module
-│   ├── oauth.controller.ts                  # Authentication endpoints
-│   ├── oauth.service.ts                     # Authentication business logic
-│   ├── strategies/
-│   │   ├── jwt.strategy.ts                  # JWT authentication strategy
-│   │   ├── local.strategy.ts                # Local authentication strategy
-│   │   └── otp.strategy.ts                  # OTP authentication strategy
-│   ├── guards/
-│   │   ├── jwt-auth.guard.ts                # JWT authentication guard
-│   │   ├── local-auth.guard.ts              # Local authentication guard
-│   │   └── roles.guard.ts                   # Role-based access control guard
-│   ├── decorators/
-│   │   └── roles.decorator.ts               # Roles decorator
-│   └── dto/
-│       ├── login.dto.ts                     # Login request DTO
-│       ├── register.dto.ts                  # Registration DTO
-│       ├── verify-otp.dto.ts                # OTP verification DTO
-│       ├── resend-otp.dto.ts                # Resend OTP DTO
-│       ├── reset-password.dto.ts            # Password reset DTO
-│       ├── change-password.dto.ts           # Change password DTO
-│       ├── refresh-token.dto.ts             # Refresh token DTO
-│       └── index.ts                         # DTO exports
-│
-├── user-management/                          # User Management System
-│   ├── user-management.module.ts            # Main user management module
-│   ├── user-management.controller.ts        # User management endpoints
-│   ├── user-management.service.ts           # Core user management logic
-│   ├── enums/
-│   │   ├── user-role.enum.ts                # User role definitions
-│   │   └── provider-tier.enum.ts            # Provider tier classifications
-│   ├── controllers/
-│   │   ├── customer.controller.ts           # Customer-specific endpoints
-│   │   ├── provider.controller.ts           # Provider-specific endpoints
-│   │   ├── admin.controller.ts              # Admin-specific endpoints
-│   │   └── lsm.controller.ts                # LSM-specific endpoints
-│   └── services/
-│       ├── customer.service.ts              # Customer business logic
-│       ├── provider.service.ts              # Provider business logic
-│       ├── admin.service.ts                 # Admin business logic
-│       ├── lsm.service.ts                   # LSM business logic
-│       └── dashboard.service.ts             # Dashboard data aggregation
-│
-├── provider-onboarding/                      # Provider Onboarding & Verification
-│   ├── provider-onboarding.module.ts        # Main onboarding module
-│   ├── provider-onboarding.controller.ts    # Onboarding endpoints
-│   ├── provider-onboarding.service.ts       # Onboarding business logic
-│   └── services/
-│       ├── document-verification.service.ts # Document validation service
-│       ├── tier-classification.service.ts   # Tier assignment service
-│       └── approval-workflow.service.ts     # Approval process service
-│
-├── job-management/                           # Job Management System
-│   ├── job-management.module.ts             # Main job management module
-│   ├── job-management.controller.ts         # Job management endpoints
-│   ├── job-management.service.ts            # Job management business logic
-│   ├── enums/
-│   │   └── job-status.enum.ts               # Job and booking status definitions
-│   ├── controllers/
-│   │   ├── job.controller.ts                # Job-specific endpoints
-│   │   ├── booking.controller.ts            # Booking-specific endpoints
-│   │   └── job-tracker.controller.ts        # Real-time tracking endpoints
-│   └── services/
-│       ├── job.service.ts                   # Job business logic
-│       ├── booking.service.ts               # Booking business logic
-│       ├── job-tracker.service.ts           # Real-time tracking logic
-│       ├── pricing.service.ts               # Dynamic pricing service
-│       └── scheduling.service.ts            # Scheduling and availability service
-│
-├── communication/                            # Communication & Engagement
-│   ├── communication.module.ts              # Main communication module
-│   ├── communication.controller.ts          # Communication endpoints
-│   ├── communication.service.ts             # Communication business logic
-│   └── services/
-│       ├── messaging.service.ts             # In-app messaging system
-│       ├── notification.service.ts          # Multi-channel notifications
-│       ├── call-tracking.service.ts         # Call logging and tracking
-│       └── engagement-metrics.service.ts    # Engagement tracking
-│
-├── search-matching/                          # Search & Matching Engine
-│   ├── search-matching.module.ts            # Main search module
-│   ├── search-matching.controller.ts        # Search endpoints
-│   ├── search-matching.service.ts           # Search business logic
-│   └── services/
-│       ├── ai-matching.service.ts           # AI-based provider matching
-│       ├── search.service.ts                # Search functionality
-│       └── ranking.service.ts               # Provider ranking algorithms
-│
-├── payment/                                  # Payment & Financial Management
-│   ├── payment.module.ts                    # Main payment module
-│   ├── payment.controller.ts                # Payment endpoints
-│   ├── payment.service.ts                   # Payment business logic
-│   └── services/
-│       ├── stripe.service.ts                # Stripe integration
-│       ├── paypal.service.ts                # PayPal integration
-│       ├── invoicing.service.ts             # Automated invoicing
-│       └── earnings.service.ts              # Provider earnings management
-│
-├── ratings-feedback/                         # Ratings & Feedback System
-│   ├── ratings-feedback.module.ts           # Main ratings module
-│   ├── ratings-feedback.controller.ts       # Feedback endpoints
-│   └── ratings-feedback.service.ts          # Feedback business logic
-│
-├── analytics/                                # Analytics & Insights
-│   ├── analytics.module.ts                  # Main analytics module
-│   ├── analytics.controller.ts              # Analytics endpoints
-│   └── analytics.service.ts                 # Analytics business logic
-│
-├── office-real-estate/                       # Shared Office & Real Estate
-│   ├── office-real-estate.module.ts         # Main office module
-│   ├── office-real-estate.controller.ts     # Office space endpoints
-│   └── office-real-estate.service.ts        # Office space business logic
-│
-├── admin-dashboard/                          # Admin Dashboard & Controls
-│   ├── admin-dashboard.module.ts            # Main admin module
-│   ├── admin-dashboard.controller.ts        # Admin control endpoints
-│   └── admin-dashboard.service.ts           # Admin dashboard logic
-│
-└── shared/                                   # Shared Services
-    └── services/
-        ├── email.service.ts                 # Email notification service
-        ├── sms.service.ts                   # SMS notification service
-        ├── notification.service.ts          # Unified notification service
-        ├── file-upload.service.ts           # File upload service
-        └── encryption.service.ts            # Encryption service
+stm-backend/
+├── src/
+│   ├── config/
+│   │   ├── database.ts
+│   │   ├── redis.ts
+│   │   ├── twilio.ts
+│   │   └── stripe.ts
+│   ├── modules/
+│   │   ├── auth/
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.service.ts
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── dto/
+│   │   │   └── guards/
+│   │   ├── users/
+│   │   │   ├── users.controller.ts
+│   │   │   ├── users.service.ts
+│   │   │   ├── users.routes.ts
+│   │   │   └── dto/
+│   │   ├── customers/
+│   │   ├── providers/
+│   │   ├── lsm/
+│   │   ├── admin/
+│   │   ├── jobs/
+│   │   ├── payments/
+│   │   ├── ratings/
+│   │   ├── chat/
+│   │   ├── notifications/
+│   │   ├── services/
+│   │   ├── office-spaces/
+│   │   └── analytics/
+│   ├── shared/
+│   │   ├── middleware/
+│   │   │   ├── auth.middleware.ts
+│   │   │   ├── role.middleware.ts
+│   │   │   ├── error.middleware.ts
+│   │   │   └── validation.middleware.ts
+│   │   ├── utils/
+│   │   │   ├── response.util.ts
+│   │   │   ├── encryption.util.ts
+│   │   │   └── pagination.util.ts
+│   │   ├── interfaces/
+│   │   └── constants/
+│   ├── jobs/ (background jobs)
+│   │   ├── email.job.ts
+│   │   ├── sms.job.ts
+│   │   └── metrics.job.ts
+│   ├── app.ts
+│   └── server.ts
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── tests/
+├── .env
+├── .env.example
+├── package.json
+└── tsconfig.json
 ```
 
-## Module Responsibilities
+---
 
-### 1. OAuth Module
-- JWT authentication
-- OTP verification (email/SMS)
-- Role-based access control
-- Password management
+## 4. Core API Modules & Endpoints
 
-### 2. User Management Module
-- Customer profile management
-- Provider profile management
-- Admin account management
-- LSM account management
-- Dashboard data aggregation
 
-### 3. Provider Onboarding Module
-- Provider registration workflow
-- Document verification
-- Tier classification (Bronze, Silver, Gold, PESP)
-- LSM evaluation system
+### 4.1 User Management Module (`/api/v1/users`)
 
-### 4. Job Management Module
-- Job lifecycle management
-- Booking system
-- Real-time job tracking
-- Dynamic pricing
-- Scheduling and availability
+**Endpoints:**
+```
+GET    /users/profile               # Get current user profile
+PUT    /users/profile               # Update profile
+PUT    /users/change-password       # Change password
+DELETE /users/account               # Deactivate account
+```
 
-### 5. Communication Module
-- In-app messaging system
-- Multi-channel notifications
-- Call tracking (Twilio/3CX)
-- Engagement metrics
+---
 
-### 6. Search & Matching Module
-- AI-based provider matching
-- Service search functionality
-- Provider ranking algorithms
-- Availability filtering
+### 4.2 Customer Module (`/api/v1/customers`)
 
-### 7. Payment Module
-- Stripe/PayPal integration
-- Automated invoicing
-- Provider earnings tracking
-- Commission management
+**Endpoints:**
+```
+GET    /customers/:id               # Get customer details
+PUT    /customers/:id               # Update customer info
+GET    /customers/:id/jobs          # Get customer job history
+GET    /customers/:id/metrics       # Get retention metrics
+GET    /customers/:id/ratings       # Get ratings given by customer
+```
 
-### 8. Ratings & Feedback Module
-- Customer feedback collection
-- Provider rating system
-- Review management
-- Performance metrics
+---
 
-### 9. Analytics Module
-- Provider performance analytics
-- Market analytics
-- Customer insights
-- Regional reporting
+### 4.3 Service Provider Module (`/api/v1/providers`)
 
-### 10. Office & Real Estate Module
-- Office space listings
-- Booking system
-- Usage analytics
-- Revenue tracking
+**Endpoints:**
+```
+POST   /providers/onboard           # Provider onboarding
+GET    /providers                   # List all providers (filtered)
+GET    /providers/:id               # Get provider details
+PUT    /providers/:id               # Update provider info
+PUT    /providers/:id/status        # Update provider status (LSM/Admin)
+GET    /providers/:id/jobs          # Get provider job history
+GET    /providers/:id/metrics       # Get performance metrics
+GET    /providers/:id/earnings      # Get earnings dashboard
+POST   /providers/:id/tier          # Update provider tier (Admin/LSM)
+GET    /providers/search            # Search providers with filters
+```
 
-### 11. Admin Dashboard Module
-- System oversight
-- User management
-- Financial controls
-- Platform settings
+**Search Filters:**
+- Service type
+- Location/region
+- Availability
+- Rating (min threshold)
+- Tier (Bronze, Silver, Gold, PESP)
+- Price range
 
-## Implementation Notes
+---
 
-- All modules are separate and independent
-- Each module has its own controllers, services, and DTOs
-- Shared services are available to all modules
-- OAuth module is the first module as requested
-- Each file contains TODO comments for implementation guidance
-- Database schema will be handled by your friend in the Prisma folder
-- All modules are imported in the main app.module.ts
+### 4.4 LSM Module (`/api/v1/lsm`)
 
-## Next Steps
+**Endpoints:**
+```
+GET    /lsm/providers               # Get all providers in region
+PUT    /lsm/providers/:id/verify    # Verify provider
+GET    /lsm/jobs                    # Get all jobs in region
+GET    /lsm/metrics                 # Get regional metrics
+POST   /lsm/logs                    # Create LSM action log
+GET    /lsm/refunds                 # Get refund requests
+PUT    /lsm/refunds/:id             # Process refund
+GET    /lsm/services/pending        # Get pending service approvals
+PUT    /lsm/services/:id/approve    # Approve service
+PUT    /lsm/services/:id/reject     # Reject service
+```
 
-1. Implement OAuth module first (authentication foundation)
-2. Implement User Management module (user types)
-3. Implement Provider Onboarding module (provider verification)
-4. Implement Job Management module (core business logic)
-5. Continue with remaining modules in order of priority
-6. Integrate with Prisma database schema
-7. Add proper error handling and validation
-8. Implement logging and monitoring
-9. Add unit and integration tests
-10. Deploy and configure environments
+---
+
+### 4.5 Admin Module (`/api/v1/admin`)
+
+**Endpoints:**
+```
+GET    /admin/dashboard             # Get admin dashboard stats
+GET    /admin/users                 # Get all users
+PUT    /admin/users/:id/role        # Update user role
+GET    /admin/providers             # Get all providers
+PUT    /admin/providers/:id/status  # Ban/activate provider
+GET    /admin/jobs                  # Get all jobs
+GET    /admin/payments              # Get payment analytics
+GET    /admin/analytics             # Platform-wide analytics
+PUT    /admin/churn-threshold       # Update churn threshold
+GET    /admin/services              # Get all services
+POST   /admin/services              # Create new service category
+```
+
+---
+
+### 4.6 Job Management Module (`/api/v1/jobs`)
+
+**Endpoints:**
+```
+POST   /jobs                        # Create new job
+GET    /jobs                        # List jobs (with filters)
+GET    /jobs/:id                    # Get job details
+PUT    /jobs/:id                    # Update job
+PUT    /jobs/:id/assign             # Assign job to provider
+PUT    /jobs/:id/status             # Update job status
+POST   /jobs/:id/quote              # Provider submits quote
+PUT    /jobs/:id/accept-quote       # Customer accepts quote
+PUT    /jobs/:id/reject-quote       # Customer rejects quote
+POST   /jobs/:id/reschedule         # Reschedule job
+DELETE /jobs/:id                    # Cancel job
+GET    /jobs/:id/history            # Get job action history
+POST   /jobs/:id/visit-request      # Request in-person visit
+```
+
+**Job Status Flow:**
+1. `pending` → Job created by customer
+2. `assigned` → Provider submits conditions/price
+3. `in_progress` → Customer accepts, work begins
+4. `completed` → Work finished
+5. `cancelled` → Cancelled by either party
+
+**Query Filters:**
+- Customer ID
+- Provider ID
+- Status
+- Service type
+- Date range
+- Location
+
+---
+
+### 4.7 Services Module (`/api/v1/services`)
+
+**Endpoints:**
+```
+POST   /services                    # Provider creates new service
+GET    /services                    # List all approved services
+GET    /services/:id                # Get service details
+PUT    /services/:id                # Update service (creator only)
+DELETE /services/:id                # Delete service (creator only)
+GET    /services/pending            # Get pending approvals (LSM)
+GET    /services/my-services        # Get provider's services
+```
+
+**Service Approval Flow:**
+1. Provider creates service → `status: pending`
+2. LSM reviews → `status: approved` or `rejected`
+3. Only approved services visible in customer search
+
+---
+
+### 4.8 Provider Services Module (`/api/v1/provider-services`)
+
+**Endpoints:**
+```
+POST   /provider-services           # Link provider to service with pricing
+GET    /provider-services/:providerId # Get all services offered by provider
+PUT    /provider-services/:providerId/:serviceId # Update pricing
+DELETE /provider-services/:providerId/:serviceId # Remove service offering
+```
+
+---
+
+### 4.9  Payment Module (`/api/v1/payments`)
+
+**Endpoints:**
+```
+POST   /payments                    # Create payment
+GET    /payments/:id                # Get payment details
+PUT    /payments/:id/status         # Update payment status
+GET    /payments/job/:jobId         # Get payments for job
+GET    /payments/provider/:id       # Get provider payments
+POST   /payments/:id/refund         # Initiate refund request
+GET    /payments/invoices           # Get invoices
+POST   /payments/process            # Process payment via Stripe/PayPal
+POST   /payments/webhook            # Payment gateway webhook
+```
+
+---
+
+### 4.10 Refunds Module (`/api/v1/refunds`)
+
+**Endpoints:**
+```
+POST   /refunds                     # Create refund request
+GET    /refunds                     # List refunds (LSM/Admin)
+GET    /refunds/:id                 # Get refund details
+PUT    /refunds/:id/approve         # Approve refund (LSM)
+PUT    /refunds/:id/reject          # Reject refund (LSM)
+```
+
+---
+
+### 4.11 Ratings & Feedback Module (`/api/v1/ratings`)
+
+**Endpoints:**
+```
+POST   /ratings                     # Submit rating for job
+GET    /ratings/job/:jobId          # Get rating for specific job
+GET    /ratings/provider/:id        # Get all ratings for provider
+GET    /ratings/customer/:id        # Get ratings given by customer
+PUT    /ratings/:id                 # Update rating (within time limit)
+DELETE /ratings/:id                 # Delete rating (admin only)
+```
+
+**Rating Structure:**
+- Overall rating: 1-5 stars
+- Punctuality: 1-5 stars
+- Response time: In minutes
+- Feedback: Text
+
+---
+
+### 4.12 Chat Module (`/api/v1/chat`)
+
+**Endpoints:**
+```
+POST   /chat                        # Create new chat
+GET    /chat/:id                    # Get chat details
+GET    /chat/job/:jobId             # Get chat for job
+POST   /chat/:id/messages           # Send message
+GET    /chat/:id/messages           # Get message history
+PUT    /chat/:id/close              # Close chat
+```
+
+**Real-time with Socket.io:**
+```javascript
+// Events
+socket.on('join_chat', { chatId })
+socket.on('send_message', { chatId, message })
+socket.on('typing', { chatId })
+socket.emit('new_message', { message })
+socket.emit('user_typing', { userId })
+```
+
+---
+
+### 4.13 Call Logs Module (`/api/v1/calls`)
+
+**Endpoints:**
+```
+POST   /calls                       # Log call
+GET    /calls/:id                   # Get call details
+GET    /calls/job/:jobId            # Get calls for job
+POST   /calls/twilio-webhook        # Twilio webhook for call status
+```
+
+---
+
+### 4.14 Notifications Module (`/api/v1/notifications`)
+
+**Endpoints:**
+```
+GET    /notifications               # Get user notifications
+PUT    /notifications/:id/read      # Mark as read
+PUT    /notifications/read-all      # Mark all as read
+DELETE /notifications/:id           # Delete notification
+POST   /notifications/preferences   # Update notification preferences
+```
+
+**Notification Types:**
+- Job updates
+- Payment confirmations
+- New messages
+- Rating received
+- System alerts
+
+**Channels:**
+- In-app
+- Email
+- SMS
+
+---
+
+### 4.15 Office Spaces Module (`/api/v1/office-spaces`)
+
+**Endpoints:**
+```
+POST   /office-spaces               # Create office space (Admin)
+GET    /office-spaces               # List office spaces
+GET    /office-spaces/:id           # Get office details
+PUT    /office-spaces/:id           # Update office space
+DELETE /office-spaces/:id           # Delete office space
+GET    /office-spaces/search        # Search with filters
+POST   /office-spaces/:id/book      # Book office space
+GET    /office-spaces/bookings      # Get bookings
+PUT    /office-spaces/bookings/:id  # Update booking status
+```
+
+---
+
+### 4.16 Analytics Module (`/api/v1/analytics`)
+
+**Endpoints:**
+```
+GET    /analytics/provider/:id      # Provider analytics
+GET    /analytics/customer/:id      # Customer analytics
+GET    /analytics/regional          # Regional analytics (LSM)
+GET    /analytics/platform          # Platform-wide (Admin)
+GET    /analytics/market-data       # Market pricing trends
+GET    /analytics/retention         # Customer retention metrics
+```
+
+
