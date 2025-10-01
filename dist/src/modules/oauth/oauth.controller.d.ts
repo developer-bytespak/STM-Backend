@@ -6,6 +6,8 @@ export declare class OAuthController {
     private readonly oauthService;
     constructor(oauthService: OAuthService);
     register(registerDto: RegisterDto): Promise<{
+        message: string;
+        timestamp: string;
         accessToken: string;
         refreshToken: string;
         user: {

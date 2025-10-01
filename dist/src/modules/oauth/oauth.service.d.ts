@@ -6,10 +6,13 @@ export declare class OAuthService {
     private readonly prisma;
     private readonly jwtService;
     private readonly configService;
+    private readonly logger;
     constructor(prisma: PrismaService, jwtService: JwtService, configService: ConfigService);
     private hashPassword;
     private comparePassword;
     register(registerDto: RegisterDto): Promise<{
+        message: string;
+        timestamp: string;
         accessToken: string;
         refreshToken: string;
         user: {

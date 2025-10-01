@@ -30,20 +30,10 @@ let RolesGuard = class RolesGuard {
         if (!user) {
             return false;
         }
-        if (user.role === 'admin' || user.role === user_role_enum_1.UserRole.ADMIN) {
+        if (user.role === user_role_enum_1.UserRole.ADMIN) {
             return true;
         }
-        const userRoleEnum = this.mapPrismaRoleToEnum(user.role);
-        return requiredRoles.some((role) => role === userRoleEnum);
-    }
-    mapPrismaRoleToEnum(prismaRole) {
-        const roleMap = {
-            'customer': user_role_enum_1.UserRole.CUSTOMER,
-            'service_provider': user_role_enum_1.UserRole.PROVIDER,
-            'local_service_manager': user_role_enum_1.UserRole.LSM,
-            'admin': user_role_enum_1.UserRole.ADMIN,
-        };
-        return roleMap[prismaRole] || prismaRole;
+        return requiredRoles.some((role) => role === user.role);
     }
 };
 exports.RolesGuard = RolesGuard;

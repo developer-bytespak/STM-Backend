@@ -39,30 +39,10 @@ export class RolesGuard implements CanActivate {
     }
 
     // ✨ ADMIN BYPASS: Admins can access everything
-    if (user.role === 'admin' || user.role === UserRole.ADMIN) {
+    if (user.role === UserRole.ADMIN) {
       return true;
     }
 
-    // Map Prisma enum values to TypeScript enum for comparison
-    const userRoleEnum = this.mapPrismaRoleToEnum(user.role);
-
     // Check if user has any of the required roles
-    return requiredRoles.some((role) => role === userRoleEnum);
-  }
-
-  /**
-   * Map Prisma Role enum to TypeScript UserRole enum
-   * Prisma: 'customer', 'service_provider', 'local_service_manager', 'admin'
-   * TypeScript: CUSTOMER, PROVIDER, LSM, ADMIN
-   */
-  private mapPrismaRoleToEnum(prismaRole: string): UserRole {
-    const roleMap: Record<string, UserRole> = {
-      'customer': UserRole.CUSTOMER,
-      'service_provider': UserRole.PROVIDER,
-      'local_service_manager': UserRole.LSM,
-      'admin': UserRole.ADMIN,
-    };
-
-    return roleMap[prismaRole] || prismaRole as UserRole;
-  }
+    return requiredRoles.some((role) => role === user.role);
 }

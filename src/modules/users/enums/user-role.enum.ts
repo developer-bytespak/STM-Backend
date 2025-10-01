@@ -1,6 +1,6 @@
 export enum UserRole {
-  CUSTOMER = 'CUSTOMER',
-  PROVIDER = 'PROVIDER',
-  ADMIN = 'ADMIN',
-  LSM = 'LSM', // Local Service Manager
+  CUSTOMER = 'customer',
+  PROVIDER = 'service_provider',
+  ADMIN = 'admin',
+  LSM = 'local_service_manager', // Local Service Manager
 }
