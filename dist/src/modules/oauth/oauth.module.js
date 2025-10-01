@@ -16,6 +16,7 @@ const oauth_service_1 = require("./oauth.service");
 const jwt_strategy_1 = require("./strategies/jwt.strategy");
 const local_strategy_1 = require("./strategies/local.strategy");
 const otp_strategy_1 = require("./strategies/otp.strategy");
+const prisma_service_1 = require("../../../prisma/prisma.service");
 let OAuthModule = class OAuthModule {
 };
 exports.OAuthModule = OAuthModule;
@@ -35,7 +36,7 @@ exports.OAuthModule = OAuthModule = __decorate([
             }),
         ],
         controllers: [oauth_controller_1.OAuthController],
-        providers: [oauth_service_1.OAuthService, jwt_strategy_1.JwtStrategy, local_strategy_1.LocalStrategy, otp_strategy_1.OTPStrategy],
+        providers: [oauth_service_1.OAuthService, jwt_strategy_1.JwtStrategy, local_strategy_1.LocalStrategy, otp_strategy_1.OTPStrategy, prisma_service_1.PrismaService],
         exports: [oauth_service_1.OAuthService, jwt_1.JwtModule],
     })
 ], OAuthModule);
