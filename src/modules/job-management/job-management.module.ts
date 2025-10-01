@@ -1,2 +1,9 @@
-// Job Management Module - Job lifecycle and tracking system
-// TODO: Implement job management module with lifecycle, booking, tracking, scheduling
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class JobManagementModule {}

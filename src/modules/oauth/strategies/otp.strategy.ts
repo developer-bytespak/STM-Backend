@@ -1,2 +1,7 @@
-// OTP Strategy - Passport OTP authentication strategy
-// TODO: Implement OTP-based authentication
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { Strategy } from 'passport-local';
+
+export class OTPStrategy {
+  // TODO: Implement OTP strategy
+}

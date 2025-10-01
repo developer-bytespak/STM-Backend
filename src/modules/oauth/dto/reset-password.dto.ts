@@ -1,2 +1,7 @@
-// Reset Password DTO - Password reset data transfer object
-// TODO: Implement password reset DTO
+import { IsString, IsNotEmpty, IsEmail } from 'class-validator';
+
+export class ResetPasswordDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+}

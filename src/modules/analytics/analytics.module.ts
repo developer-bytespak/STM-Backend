@@ -1,2 +1,9 @@
-// Analytics Module - Data analytics and insights
-// TODO: Implement analytics, reporting, insights, market analysis, performance metrics
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class AnalyticsModule {}

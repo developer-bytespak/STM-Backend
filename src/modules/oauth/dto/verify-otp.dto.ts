@@ -1,2 +1,11 @@
-// Verify OTP DTO - OTP verification data transfer object
-// TODO: Implement OTP verification DTO
+import { IsString, IsNotEmpty } from 'class-validator';
+
+export class VerifyOtpDto {
+  @IsString()
+  @IsNotEmpty()
+  otp: string;
+
+  @IsString()
+  @IsNotEmpty()
+  email: string;
+}

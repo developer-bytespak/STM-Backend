@@ -1,2 +1,9 @@
-// Admin Dashboard Module - Platform administration and controls
-// TODO: Implement admin dashboard, system controls, oversight, management tools
+import { Module } from '@nestjs/common';
+
+@Module({
+  imports: [],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class AdminDashboardModule {}
