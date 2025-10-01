@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RolesGuard = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
+const user_role_enum_1 = require("../../user-management/enums/user-role.enum");
 const roles_decorator_1 = require("../decorators/roles.decorator");
 let RolesGuard = class RolesGuard {
     constructor(reflector) {
@@ -26,7 +27,23 @@ let RolesGuard = class RolesGuard {
             return true;
         }
         const { user } = context.switchToHttp().getRequest();
-        return requiredRoles.some((role) => user.role?.includes(role));
+        if (!user) {
+            return false;
+        }
+        if (user.role === 'admin' || user.role === user_role_enum_1.UserRole.ADMIN) {
+            return true;
+        }
+        const userRoleEnum = this.mapPrismaRoleToEnum(user.role);
+        return requiredRoles.some((role) => role === userRoleEnum);
+    }
+    mapPrismaRoleToEnum(prismaRole) {
+        const roleMap = {
+            'customer': user_role_enum_1.UserRole.CUSTOMER,
+            'service_provider': user_role_enum_1.UserRole.PROVIDER,
+            'local_service_manager': user_role_enum_1.UserRole.LSM,
+            'admin': user_role_enum_1.UserRole.ADMIN,
+        };
+        return roleMap[prismaRole] || prismaRole;
     }
 };
 exports.RolesGuard = RolesGuard;

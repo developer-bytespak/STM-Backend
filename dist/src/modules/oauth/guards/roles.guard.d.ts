@@ -4,4 +4,5 @@ export declare class RolesGuard implements CanActivate {
     private reflector;
     constructor(reflector: Reflector);
     canActivate(context: ExecutionContext): boolean;
+    private mapPrismaRoleToEnum;
 }
