@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
-import { UserRole } from '../user-management/enums/user-role.enum';
+import { UserRole } from '../users/enums/user-role.enum';
 
 @Injectable()
 export class OAuthService {

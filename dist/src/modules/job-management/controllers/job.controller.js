@@ -18,7 +18,7 @@ const swagger_1 = require("@nestjs/swagger");
 const jwt_auth_guard_1 = require("../../oauth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../../oauth/guards/roles.guard");
 const decorators_1 = require("../../oauth/decorators");
-const user_role_enum_1 = require("../../user-management/enums/user-role.enum");
+const user_role_enum_1 = require("../../users/enums/user-role.enum");
 let JobController = class JobController {
     async createJob(user, jobData) {
         return {
