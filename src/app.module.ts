@@ -15,12 +15,12 @@ import { ProviderOnboardingModule } from './modules/provider-onboarding/provider
 import { JobManagementModule } from './modules/job-management/job-management.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { ServicesModule } from './modules/services/services.module';
-import { PaymentsModule } from './modules/payments/payments.module';
-import { RatingsModule } from './modules/ratings/ratings.module';
+import { ServicesModule } from './modules/services/search-matching.module';
+import { PaymentsModule } from './modules/payments/payment.module';
+import { RatingsModule } from './modules/ratings/ratings-feedback.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { OfficeSpacesModule } from './modules/office-spaces/office-spaces.module';
-import { AdminModule } from './modules/admin/admin.module';
+import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.module';
+import { AdminModule } from './modules/admin/admin-dashboard.module';
 
 @Module({
   imports: [

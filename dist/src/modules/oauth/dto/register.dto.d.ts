@@ -1,4 +1,4 @@
-import { UserRole } from '../../user-management/enums/user-role.enum';
+import { UserRole } from '../../users/enums/user-role.enum';
 export declare class RegisterDto {
     email: string;
     phoneNumber: string;

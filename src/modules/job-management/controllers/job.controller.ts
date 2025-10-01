@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../oauth/guards/roles.guard';
 import { Roles, CurrentUser } from '../../oauth/decorators';
-import { UserRole } from '../../user-management/enums/user-role.enum';
+import { UserRole } from '../../users/enums/user-role.enum';
 
 /**
  * Job Controller - Testing RBAC

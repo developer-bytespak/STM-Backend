@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RegisterDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
-const user_role_enum_1 = require("../../user-management/enums/user-role.enum");
+const user_role_enum_1 = require("../../users/enums/user-role.enum");
 class RegisterDto {
 }
 exports.RegisterDto = RegisterDto;
