@@ -34,7 +34,7 @@ enum JobStatus {
   completed
   cancelled
   paid // 🔹 Added per your requirement flow
-  rejected
+  rejected_by_sp
 }
 
 enum ApprovalStatus {
@@ -69,6 +69,11 @@ enum MessageType {
   document
 }
 
+enum DisputeStatus {
+  pending
+  resolved
+}
+
 // -------------------- USERS --------------------
 
 model users {
@@ -95,15 +100,16 @@ model users {
 // -------------------- CUSTOMER --------------------
 
 model customers {
-  id         Int                @id @default(autoincrement())
-  user_id    Int                @unique
-  user       users              @relation(fields: [user_id], references: [id])
-  address    String
-  zipcode    String? // 🔹 added to filter services by area
-  jobs       jobs[]
-  chats      chat[]
-  feedbacks  ratings_feedback[]
-  created_at DateTime           @default(now())
+  id               Int                @id @default(autoincrement())
+  user_id          Int                @unique
+  user             users              @relation(fields: [user_id], references: [id])
+  address          String
+  zipcode          String? // 🔹 added to filter services by area
+  jobs             jobs[]
+  chats            chat[]
+  feedbacks        ratings_feedback[]
+  service_requests service_requests[]
+  created_at       DateTime           @default(now())
 }
 
 // -------------------- SERVICE PROVIDER --------------------
@@ -124,13 +130,18 @@ model service_providers {
   local_service_manager local_service_managers @relation(fields: [lsm_id], references: [id])
   total_jobs            Int                    @default(0)
   earning               Decimal                @default(0.0) @db.Decimal(10, 2)
+  warnings              Int                    @default(0)
+  rejection_reason      String?
+  approved_at           DateTime?
+  is_deleted            Boolean                @default(false)
+  deleted_at            DateTime?
   created_at            DateTime               @default(now())
   updated_at            DateTime               @updatedAt
 
-  jobs      jobs[]
-  chats     chat[]
-  services  services[]         @relation("created_services")
-  feedbacks ratings_feedback[]
+  jobs              jobs[]
+  chats             chat[]
+  feedbacks         ratings_feedback[]
+  provider_services provider_services[]
 }
 
 // -------------------- LOCAL SERVICE MANAGER --------------------
@@ -144,7 +155,6 @@ model local_service_managers {
   closed_deals_count Int?                @default(0)
   earnings           Decimal?            @default(0.00) @db.Decimal(10, 2)
   service_providers  service_providers[]
-  services           services[]          @relation("approved_services")
   chats              chat[]
   created_at         DateTime            @default(now())
   updated_at         DateTime            @updatedAt
@@ -162,45 +172,48 @@ model admin {
 // -------------------- SERVICES --------------------
 
 model services {
-  id                    Int                     @id @default(autoincrement())
-  name                  String
-  description           String?
-  category              String // 🔹 Added for search/filter
-  created_by            Int
-  service_provider      service_providers       @relation("created_services", fields: [created_by], references: [id])
-  approved_by           Int?
-  local_service_manager local_service_managers? @relation("approved_services", fields: [approved_by], references: [id])
-  status                ApprovalStatus          @default(pending)
-  is_popular            Boolean                 @default(false) // 🔹 For homepage
-  questions_json        Json? // 🔹 dynamic service questions
-  created_at            DateTime                @default(now())
-  updated_at            DateTime                @updatedAt
+  id             Int            @id @default(autoincrement())
+  name           String
+  description    String?
+  category       String
+  questions_json Json?
+  status         ApprovalStatus @default(approved) // 🔹 Pre-created services are approved
+  is_popular     Boolean        @default(false)
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
 
-  jobs jobs[]
+  provider_services provider_services[]
+  jobs              jobs[]
+  search_logs       service_search_logs[]
 }
 
 // -------------------- JOBS --------------------
 
 model jobs {
-  id               Int               @id @default(autoincrement())
-  customer_id      Int
-  customer         customers         @relation(fields: [customer_id], references: [id])
-  provider_id      Int
-  service_provider service_providers @relation(fields: [provider_id], references: [id])
-  service_id       Int
-  service          services          @relation(fields: [service_id], references: [id])
-  status           JobStatus         @default(new)
-  description      String?
-  price            Decimal           @default(0.00) @db.Decimal(10, 2)
-  location         String
-  answers_json         Json? // 🔹 dynamic form answers
-  scheduled_at     DateTime?
-  completed_at     DateTime?
-  created_at       DateTime          @default(now())
-  updated_at       DateTime          @updatedAt
+  id                Int               @id @default(autoincrement())
+  customer_id       Int
+  customer          customers         @relation(fields: [customer_id], references: [id])
+  provider_id       Int
+  service_provider  service_providers @relation(fields: [provider_id], references: [id])
+  service_id        Int
+  service           services          @relation(fields: [service_id], references: [id])
+  status            JobStatus         @default(new)
+  description       String?
+  price             Decimal           @default(0.00) @db.Decimal(10, 2)
+  location          String
+  answers_json      Json? // 🔹 dynamic form answers
+  pending_approval  Boolean           @default(false)
+  response_deadline DateTime?
+  rejection_reason  String?
+  scheduled_at      DateTime?
+  completed_at      DateTime?
+  paid_at           DateTime?
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
 
   chats     chat[]
   feedbacks ratings_feedback[]
+  disputes  disputes[]
 }
 
 // -------------------- CHAT + MESSAGE --------------------
@@ -216,8 +229,12 @@ model chat {
   lsm_id                Int?
   local_service_manager local_service_managers? @relation(fields: [lsm_id], references: [id])
   is_active             Boolean                 @default(true)
+  is_deleted            Boolean                 @default(false)
+  deleted_at            DateTime?
+  deleted_by            Int?
   created_at            DateTime                @default(now())
   messages              messages[]
+  disputes              disputes[]
 }
 
 model messages {
@@ -234,18 +251,18 @@ model messages {
 // -------------------- RATINGS + FEEDBACK --------------------
 
 model ratings_feedback {
-  id                  Int                @id @default(autoincrement())
-  job_id              Int
-  job                 jobs               @relation(fields: [job_id], references: [id])
-  customer_id         Int
-  customer            customers          @relation(fields: [customer_id], references: [id])
-  rating              Int?               @default(0)
-  feedback            String?
-  punctuality_rating  Int?               @default(0)
-  response_time       Int?               @default(0)
-  created_at          DateTime           @default(now())
-  service_providers   service_providers? @relation(fields: [service_providersId], references: [id])
-  service_providersId Int?
+  id                 Int               @id @default(autoincrement())
+  job_id             Int
+  job                jobs              @relation(fields: [job_id], references: [id])
+  customer_id        Int
+  customer           customers         @relation(fields: [customer_id], references: [id])
+  provider_id        Int
+  provider           service_providers @relation(fields: [provider_id], references: [id])
+  rating             Int?              @default(0)
+  feedback           String?
+  punctuality_rating Int?              @default(0)
+  response_time      Int?              @default(0)
+  created_at         DateTime          @default(now())
 }
 
 // -------------------- NOTIFICATIONS --------------------
@@ -260,4 +277,64 @@ model notifications {
   channel        NotificationChannel
   is_read        Boolean             @default(false) // 🔹 for tracking
   created_at     DateTime            @default(now())
+}
+
+// -------------------- DISPUTES --------------------
+
+model disputes {
+  id               Int           @id @default(autoincrement())
+  job_id           Int
+  job              jobs          @relation(fields: [job_id], references: [id])
+  chat_id          String        @db.Uuid
+  chat             chat          @relation(fields: [chat_id], references: [id])
+  raised_by_id     Int
+  raised_by_type   SenderType
+  description      String
+  attachments      String[]
+  status           DisputeStatus @default(pending)
+  resolved_by      Int?
+  resolution_notes String?
+  created_at       DateTime      @default(now())
+  resolved_at      DateTime?
+}
+
+// -------------------- SERVICE SEARCH LOGS --------------------
+
+model service_search_logs {
+  id          Int      @id @default(autoincrement())
+  service_id  Int
+  service     services @relation(fields: [service_id], references: [id])
+  region      String
+  zipcode     String?
+  searched_at DateTime @default(now())
+
+  @@index([service_id, region, searched_at])
+}
+
+// -------------------- SERVICE REQUESTS --------------------
+
+model service_requests {
+  id          Int        @id @default(autoincrement())
+  keyword     String
+  zipcode     String?
+  region      String?
+  customer_id Int?
+  customer    customers? @relation(fields: [customer_id], references: [id])
+  email_sent  Boolean    @default(false)
+  reviewed    Boolean    @default(false)
+  created_at  DateTime   @default(now())
+}
+
+// -------------------- PROVIDER SERVICES (JUNCTION TABLE) --------------------
+
+model provider_services {
+  id          Int               @id @default(autoincrement())
+  provider_id Int
+  provider    service_providers @relation(fields: [provider_id], references: [id])
+  service_id  Int
+  service     services          @relation(fields: [service_id], references: [id])
+  is_active   Boolean           @default(true)
+  created_at  DateTime          @default(now())
+
+  @@unique([provider_id, service_id])
 }
