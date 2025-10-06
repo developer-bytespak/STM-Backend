@@ -87,7 +87,7 @@ let ProvidersService = class ProvidersService {
                         description: createProviderDto.description,
                         location: createProviderDto.location,
                         lsm_id: createProviderDto.lsm_id,
-                        tier: createProviderDto.tier || client_1.ProviderTier.Bronze,
+                        tier: createProviderDto.tier || 'Bronze',
                         status: createProviderDto.status || client_1.ProviderStatus.active,
                         is_active: createProviderDto.is_active !== undefined ? createProviderDto.is_active : true,
                     },
@@ -98,9 +98,6 @@ let ProvidersService = class ProvidersService {
                                 user: true
                             }
                         },
-                        performance_metrics: true,
-                        created_services: true,
-                        provided_services: true,
                     }
                 });
                 return provider;
@@ -222,11 +219,6 @@ let ProvidersService = class ProvidersService {
                                 user: true
                             }
                         },
-                        performance_metrics: {
-                            orderBy: { created_at: 'desc' }
-                        },
-                        created_services: true,
-                        provided_services: true,
                     },
                     skip,
                     take: limit,
@@ -257,11 +249,6 @@ let ProvidersService = class ProvidersService {
                             user: true
                         }
                     },
-                    performance_metrics: {
-                        orderBy: { created_at: 'desc' }
-                    },
-                    created_services: true,
-                    provided_services: true,
                 }
             });
             if (!provider) {
@@ -287,11 +274,6 @@ let ProvidersService = class ProvidersService {
                             user: true
                         }
                     },
-                    performance_metrics: {
-                        orderBy: { created_at: 'desc' }
-                    },
-                    created_services: true,
-                    provided_services: true,
                 }
             });
             if (!provider) {
@@ -382,11 +364,6 @@ let ProvidersService = class ProvidersService {
                                 user: true
                             }
                         },
-                        performance_metrics: {
-                            orderBy: { created_at: 'desc' }
-                        },
-                        created_services: true,
-                        provided_services: true,
                     }
                 });
             });
@@ -433,11 +410,6 @@ let ProvidersService = class ProvidersService {
                             user: true
                         }
                     },
-                    performance_metrics: {
-                        orderBy: { created_at: 'desc' }
-                    },
-                    created_services: true,
-                    provided_services: true,
                 }
             });
             return this.transformToResponseDto(result);
@@ -486,7 +458,7 @@ let ProvidersService = class ProvidersService {
                 data: {
                     name: createServiceDto.name,
                     description: createServiceDto.description,
-                    created_by: providerId,
+                    category: 'General',
                     status: client_1.ApprovalStatus.pending,
                 }
             });
@@ -495,8 +467,6 @@ let ProvidersService = class ProvidersService {
                     data: {
                         provider_id: providerId,
                         service_id: service.id,
-                        min_price: createServiceDto.min_price,
-                        max_price: createServiceDto.max_price,
                     }
                 });
             }
@@ -517,8 +487,7 @@ let ProvidersService = class ProvidersService {
             const provider = await this.prisma.service_providers.findUnique({
                 where: { id: providerId },
                 include: {
-                    created_services: true,
-                    provided_services: {
+                    provider_services: {
                         include: {
                             service: true
                         }
@@ -529,10 +498,8 @@ let ProvidersService = class ProvidersService {
                 throw new common_1.NotFoundException(`Provider with ID ${providerId} not found`);
             }
             return {
-                created_services: provider.created_services,
-                available_services: provider.provided_services,
-                total_created: provider.created_services.length,
-                total_available: provider.provided_services.length
+                available_services: provider.provider_services,
+                total_available: provider.provider_services.length
             };
         }
         catch (error) {
@@ -633,10 +600,6 @@ let ProvidersService = class ProvidersService {
             total_jobs: provider.total_jobs,
             user: provider.user,
             local_service_manager: provider.local_service_manager,
-            performance_metrics: provider.performance_metrics,
-            latest_performance: provider.performance_metrics?.[0],
-            total_services_created: provider.created_services?.length || 0,
-            total_available_services: provider.provided_services?.length || 0,
         }, { excludeExtraneousValues: true });
         return response;
     }

@@ -1,10 +1,10 @@
-import { ProviderTier, ProviderStatus } from '@prisma/client';
+import { ProviderStatus } from '@prisma/client';
 export declare class ProviderFiltersDto {
     search?: string;
     email?: string;
     phone_number?: string;
     location?: string;
-    tier?: ProviderTier;
+    tier?: string;
     status?: ProviderStatus;
     is_active?: boolean;
     lsm_id?: number;

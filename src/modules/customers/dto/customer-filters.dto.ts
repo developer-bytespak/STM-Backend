@@ -1,7 +1,6 @@
 import { IsOptional, IsString, IsEmail, IsInt, Min, IsEnum, IsDateString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { RetentionStatus } from '@prisma/client';
 
 export class CustomerFiltersDto {
   @ApiPropertyOptional({ description: 'Search by name or email' })
@@ -19,10 +18,7 @@ export class CustomerFiltersDto {
   @IsString()
   phone_number?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by retention status' })
-  @IsOptional()
-  @IsEnum(RetentionStatus)
-  retention_status?: RetentionStatus;
+  // Retention status removed from schema
 
   @ApiPropertyOptional({ description: 'Filter by email verification status' })
   @IsOptional()

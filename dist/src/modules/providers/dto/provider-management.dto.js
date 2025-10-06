@@ -23,9 +23,9 @@ __decorate([
     __metadata("design:type", String)
 ], ProviderManagementDto.prototype, "status", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'Provider tier', enum: client_1.ProviderTier }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Provider tier' }),
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(client_1.ProviderTier),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], ProviderManagementDto.prototype, "tier", void 0);
 __decorate([

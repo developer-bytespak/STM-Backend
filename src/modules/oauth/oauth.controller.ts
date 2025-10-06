@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   UseGuards,
   Request,
@@ -16,6 +17,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { CurrentUser } from './decorators';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('auth')
 @ApiTags('authentication')
@@ -110,5 +112,19 @@ export class OAuthController {
   async logout(@CurrentUser('id') userId: number) {
     await this.oauthService.logout(userId);
     return { message: 'Logged out successfully' };
+  }
+
+  /**
+   * Update current user profile (partial)
+   */
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Patch('me')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateMe(@CurrentUser('id') userId: number, @Body() body: UpdateProfileDto) {
+    return this.oauthService.updateProfile(userId, body);
   }
 }

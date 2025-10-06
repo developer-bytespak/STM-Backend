@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
@@ -51,6 +51,6 @@ import { AdminModule } from './modules/admin/admin-dashboard.module';
     AdminModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PrismaService],
+  providers: [AppService, PrismaService, Logger],
 })
 export class AppModule {}

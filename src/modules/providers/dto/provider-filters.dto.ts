@@ -1,7 +1,7 @@
 import { IsOptional, IsString, IsEmail, IsInt, Min, IsEnum, IsDateString, IsBoolean } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { ProviderTier, ProviderStatus } from '@prisma/client';
+import { ProviderStatus } from '@prisma/client';
 
 export class ProviderFiltersDto {
   @ApiPropertyOptional({ description: 'Search by name, email, or location' })
@@ -24,10 +24,10 @@ export class ProviderFiltersDto {
   @IsString()
   location?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by provider tier', enum: ProviderTier })
+  @ApiPropertyOptional({ description: 'Filter by provider tier' })
   @IsOptional()
-  @IsEnum(ProviderTier)
-  tier?: ProviderTier;
+  @IsString()
+  tier?: string;
 
   @ApiPropertyOptional({ description: 'Filter by provider status', enum: ProviderStatus })
   @IsOptional()
