@@ -6,4 +6,9 @@ export declare class RegisterDto {
     firstName: string;
     lastName: string;
     role: UserRole;
+    region: string;
+    zipcode?: string;
+    address?: string;
+    location?: string;
+    experience?: number;
 }

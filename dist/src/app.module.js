@@ -60,7 +60,7 @@ exports.AppModule = AppModule = __decorate([
             admin_dashboard_module_1.AdminModule,
         ],
         controllers: [app_controller_1.AppController],
-        providers: [app_service_1.AppService, prisma_service_1.PrismaService],
+        providers: [app_service_1.AppService, prisma_service_1.PrismaService, common_1.Logger],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

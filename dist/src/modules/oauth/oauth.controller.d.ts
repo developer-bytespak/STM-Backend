@@ -2,6 +2,7 @@ import { OAuthService } from './oauth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 export declare class OAuthController {
     private readonly oauthService;
     constructor(oauthService: OAuthService);
@@ -41,5 +42,15 @@ export declare class OAuthController {
     }>;
     logout(userId: number): Promise<{
         message: string;
+    }>;
+    updateMe(userId: number, body: UpdateProfileDto): Promise<{
+        email: string;
+        role: import(".prisma/client").$Enums.Role;
+        id: number;
+        first_name: string;
+        last_name: string;
+        phone_number: string;
+        profile_picture: string;
+        updated_at: Date;
     }>;
 }

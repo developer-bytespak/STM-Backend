@@ -1,6 +1,6 @@
 import { IsString, IsEmail, IsNotEmpty, IsOptional, IsEnum, IsInt, Min, MinLength, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ProviderTier, ProviderStatus } from '@prisma/client';
+import { ProviderStatus } from '@prisma/client';
 
 export class CreateProviderDto {
   @ApiProperty({ description: 'Provider first name' })
@@ -49,10 +49,10 @@ export class CreateProviderDto {
   @Min(1)
   lsm_id: number;
 
-  @ApiPropertyOptional({ description: 'Provider tier', enum: ProviderTier, default: 'Bronze' })
+  @ApiPropertyOptional({ description: 'Provider tier', default: 'Bronze' })
   @IsOptional()
-  @IsEnum(ProviderTier)
-  tier?: ProviderTier = ProviderTier.Bronze;
+  @IsString()
+  tier?: string = 'Bronze';
 
   @ApiPropertyOptional({ description: 'Provider status', enum: ProviderStatus, default: 'active' })
   @IsOptional()

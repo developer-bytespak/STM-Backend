@@ -58,10 +58,10 @@ enum NotificationType {
   feedback
 }
 
-enum NotificationChannel {
-  in_app
-  email
-}
+// enum NotificationChannel {
+//   in_app
+//   email
+// }
 
 enum MessageType {
   text
@@ -234,7 +234,6 @@ model chat {
   deleted_by            Int?
   created_at            DateTime                @default(now())
   messages              messages[]
-  disputes              disputes[]
 }
 
 model messages {
@@ -268,34 +267,27 @@ model ratings_feedback {
 // -------------------- NOTIFICATIONS --------------------
 
 model notifications {
-  id             String              @id @default(uuid()) @db.Uuid
+  id             String           @id @default(uuid()) @db.Uuid
   recipient_type SenderType
   recipient_id   Int
   type           NotificationType
   title          String
   message        String
-  channel        NotificationChannel
-  is_read        Boolean             @default(false) // 🔹 for tracking
-  created_at     DateTime            @default(now())
+  is_read        Boolean          @default(false) // 🔹 for tracking
+  created_at     DateTime         @default(now())
 }
 
 // -------------------- DISPUTES --------------------
 
 model disputes {
-  id               Int           @id @default(autoincrement())
-  job_id           Int
-  job              jobs          @relation(fields: [job_id], references: [id])
-  chat_id          String        @db.Uuid
-  chat             chat          @relation(fields: [chat_id], references: [id])
-  raised_by_id     Int
-  raised_by_type   SenderType
-  description      String
-  attachments      String[]
-  status           DisputeStatus @default(pending)
-  resolved_by      Int?
-  resolution_notes String?
-  created_at       DateTime      @default(now())
-  resolved_at      DateTime?
+  id             Int           @id @default(autoincrement())
+  job_id         Int           @unique // one dispute per job max
+  job            jobs          @relation(fields: [job_id], references: [id])
+  raised_by_type SenderType // customer or service_provider
+  status         DisputeStatus @default(pending)
+  resolved_by    Int? // LSM user_id who resolved
+  resolved_at    DateTime?
+  created_at     DateTime      @default(now())
 }
 
 // -------------------- SERVICE SEARCH LOGS --------------------

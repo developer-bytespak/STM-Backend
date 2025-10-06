@@ -55,6 +55,25 @@ let OAuthService = class OAuthService {
         this.jwtService = jwtService;
         this.configService = configService;
     }
+    mapUserRoleToPrisma(role) {
+        const normalizedRole = typeof role === 'string' ? role.toUpperCase() : role;
+        switch (normalizedRole) {
+            case user_role_enum_1.UserRole.CUSTOMER:
+            case 'CUSTOMER':
+                return 'customer';
+            case user_role_enum_1.UserRole.PROVIDER:
+            case 'PROVIDER':
+                return 'service_provider';
+            case user_role_enum_1.UserRole.LSM:
+            case 'LSM':
+                return 'local_service_manager';
+            case user_role_enum_1.UserRole.ADMIN:
+            case 'ADMIN':
+                return 'admin';
+            default:
+                throw new common_1.BadRequestException(`Invalid role: ${role}. Valid roles are: CUSTOMER, PROVIDER, LSM, ADMIN`);
+        }
+    }
     async hashPassword(password) {
         const saltRounds = 12;
         return bcrypt.hash(password, saltRounds);
@@ -63,7 +82,7 @@ let OAuthService = class OAuthService {
         return bcrypt.compare(password, hash);
     }
     async register(registerDto) {
-        const { email, password, firstName, lastName, phoneNumber, role } = registerDto;
+        const { email, password, firstName, lastName, phoneNumber, role, region, zipcode, address, location, experience } = registerDto;
         const existingUser = await this.prisma.users.findUnique({
             where: { email },
         });
@@ -79,25 +98,55 @@ let OAuthService = class OAuthService {
                     first_name: firstName,
                     last_name: lastName,
                     phone_number: phoneNumber,
-                    role: role,
+                    role: this.mapUserRoleToPrisma(role),
                 },
             });
             switch (role) {
                 case user_role_enum_1.UserRole.CUSTOMER:
+                    if (!region) {
+                        throw new common_1.BadRequestException('Region is required for customer registration. Please specify the region.');
+                    }
                     await prisma.customers.create({
                         data: {
                             user_id: newUser.id,
-                            address: '',
+                            address: address || 'Not provided',
+                            zipcode: zipcode || null,
                         },
                     });
                     break;
                 case user_role_enum_1.UserRole.PROVIDER:
-                    throw new common_1.BadRequestException('Provider registration requires LSM assignment. Please use provider onboarding endpoint.');
+                    if (!region) {
+                        throw new common_1.BadRequestException('Region is required for provider registration. Please specify the region.');
+                    }
+                    const availableLSM = await prisma.local_service_managers.findFirst({
+                        where: {
+                            status: 'active',
+                            region: region
+                        },
+                        orderBy: { created_at: 'asc' }
+                    });
+                    if (!availableLSM) {
+                        throw new common_1.BadRequestException(`No active LSM available in region "${region}". Please contact admin to create an LSM for this region.`);
+                    }
+                    await prisma.service_providers.create({
+                        data: {
+                            user_id: newUser.id,
+                            experience: experience || 0,
+                            location: location || 'Not provided',
+                            zipcode: zipcode || null,
+                            lsm_id: availableLSM.id,
+                            status: 'pending',
+                        },
+                    });
+                    break;
                 case user_role_enum_1.UserRole.LSM:
+                    if (!region) {
+                        throw new common_1.BadRequestException('Region is required for LSM registration. Please specify the region.');
+                    }
                     await prisma.local_service_managers.create({
                         data: {
                             user_id: newUser.id,
-                            region: '',
+                            region: region,
                         },
                     });
                     break;
@@ -234,11 +283,12 @@ let OAuthService = class OAuthService {
                 roleSpecificData = await this.prisma.customers.findUnique({
                     where: { user_id: userId },
                     include: {
-                        customer_retention_metrics: true,
                         _count: {
                             select: {
                                 jobs: true,
-                                ratings_feedback: true,
+                                feedbacks: true,
+                                chats: true,
+                                service_requests: true,
                             },
                         },
                     },
@@ -261,11 +311,11 @@ let OAuthService = class OAuthService {
                                 region: true,
                             },
                         },
-                        performance_metrics: true,
                         _count: {
                             select: {
                                 jobs: true,
-                                created_services: true,
+                                feedbacks: true,
+                                provider_services: true,
                             },
                         },
                     },
@@ -278,7 +328,7 @@ let OAuthService = class OAuthService {
                         _count: {
                             select: {
                                 service_providers: true,
-                                lsm_logs: true,
+                                chats: true,
                             },
                         },
                     },
@@ -300,6 +350,47 @@ let OAuthService = class OAuthService {
             where: { id: userId },
             data: { refresh_token: null },
         });
+    }
+    async updateProfile(userId, dto) {
+        const updateData = {};
+        if (dto.firstName !== undefined)
+            updateData.first_name = dto.firstName;
+        if (dto.lastName !== undefined)
+            updateData.last_name = dto.lastName;
+        if (dto.phoneNumber !== undefined)
+            updateData.phone_number = dto.phoneNumber;
+        if (dto.profilePicture !== undefined)
+            updateData.profile_picture = dto.profilePicture;
+        if (Object.keys(updateData).length === 0) {
+            return this.prisma.users.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    email: true,
+                    first_name: true,
+                    last_name: true,
+                    phone_number: true,
+                    role: true,
+                    profile_picture: true,
+                    updated_at: true,
+                },
+            });
+        }
+        const updated = await this.prisma.users.update({
+            where: { id: userId },
+            data: updateData,
+            select: {
+                id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
+                phone_number: true,
+                role: true,
+                profile_picture: true,
+                updated_at: true,
+            },
+        });
+        return updated;
     }
 };
 exports.OAuthService = OAuthService;

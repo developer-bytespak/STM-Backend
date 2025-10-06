@@ -164,7 +164,7 @@ __decorate([
     __metadata("design:type", Number)
 ], ProviderResponseDto.prototype, "rating", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({ enum: client_1.ProviderTier }),
+    (0, swagger_1.ApiProperty)(),
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", String)
 ], ProviderResponseDto.prototype, "tier", void 0);

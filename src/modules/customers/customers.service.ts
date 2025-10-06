@@ -6,7 +6,7 @@ import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { plainToClass } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { Role, RetentionStatus } from '@prisma/client';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class CustomersService {
@@ -49,7 +49,6 @@ export class CustomersService {
           },
           include: {
             user: true,
-            customer_retention_metrics: true,
           }
         });
 
@@ -70,12 +69,7 @@ export class CustomersService {
       search,
       email,
       phone_number,
-      retention_status,
       is_email_verified,
-      min_total_jobs,
-      max_total_jobs,
-      min_total_spent,
-      max_total_spent,
       created_from,
       created_to,
       page = 1,
@@ -128,43 +122,15 @@ export class CustomersService {
       }
     }
 
-    // Retention metrics filters
-    if (retention_status || min_total_jobs || max_total_jobs || min_total_spent || max_total_spent) {
-      where.customer_retention_metrics = {
-        some: {}
-      };
-
-      if (retention_status) {
-        where.customer_retention_metrics.some.retention_status = retention_status;
-      }
-
-      if (min_total_jobs || max_total_jobs) {
-        where.customer_retention_metrics.some.total_jobs = {};
-        if (min_total_jobs) {
-          where.customer_retention_metrics.some.total_jobs.gte = min_total_jobs;
-        }
-        if (max_total_jobs) {
-          where.customer_retention_metrics.some.total_jobs.lte = max_total_jobs;
-        }
-      }
-
-      if (min_total_spent || max_total_spent) {
-        where.customer_retention_metrics.some.total_spent = {};
-        if (min_total_spent) {
-          where.customer_retention_metrics.some.total_spent.gte = min_total_spent;
-        }
-        if (max_total_spent) {
-          where.customer_retention_metrics.some.total_spent.lte = max_total_spent;
-        }
-      }
-    }
+    // Note: Retention metrics were removed from the schema; skipping related filters.
 
     // Build orderBy clause
     let orderBy: any = {};
     if (sort_by === 'first_name' || sort_by === 'last_name' || sort_by === 'email') {
       orderBy = { user: { [sort_by]: sort_order } };
     } else if (sort_by === 'total_jobs' || sort_by === 'total_spent') {
-      orderBy = { customer_retention_metrics: { [sort_by]: sort_order } };
+      // These fields are not directly sortable now; fallback to created_at
+      orderBy = { user: { created_at: sort_order } };
     } else {
       orderBy = { user: { [sort_by]: sort_order } };
     }
@@ -175,10 +141,9 @@ export class CustomersService {
           where,
           include: {
             user: true,
-            customer_retention_metrics: true,
             jobs: {
               include: {
-                ratings_feedback: true,
+                feedbacks: true,
               }
             }
           },
@@ -208,10 +173,9 @@ export class CustomersService {
         where: { id },
         include: {
           user: true,
-          customer_retention_metrics: true,
           jobs: {
             include: {
-              ratings_feedback: true,
+              feedbacks: true,
             }
           }
         }
@@ -236,10 +200,9 @@ export class CustomersService {
         where: { user_id: userId },
         include: {
           user: true,
-          customer_retention_metrics: true,
           jobs: {
             include: {
-              ratings_feedback: true,
+              feedbacks: true,
             }
           }
         }
@@ -317,10 +280,9 @@ export class CustomersService {
           where: { id },
           include: {
             user: true,
-            customer_retention_metrics: true,
             jobs: {
               include: {
-                ratings_feedback: true,
+                feedbacks: true,
               }
             }
           }
@@ -370,9 +332,8 @@ export class CustomersService {
       const [
         totalCustomers,
         verifiedCustomers,
-        customersByRetention,
         recentCustomers,
-        averageJobsPerCustomer
+        totalJobsCount
       ] = await Promise.all([
         this.prisma.customers.count(),
         this.prisma.customers.count({
@@ -382,10 +343,7 @@ export class CustomersService {
             }
           }
         }),
-        this.prisma.customer_retention_metrics.groupBy({
-          by: ['retention_status'],
-          _count: true
-        }),
+        // Retention metrics removed; skipping retention breakdown
         this.prisma.customers.count({
           where: {
             user: {
@@ -395,23 +353,17 @@ export class CustomersService {
             }
           }
         }),
-        this.prisma.customer_retention_metrics.aggregate({
-          _avg: {
-            total_jobs: true
-          }
-        })
+        // Compute average jobs per customer using total jobs count
+        this.prisma.jobs.count()
       ]);
 
       return {
         total_customers: totalCustomers,
         verified_customers: verifiedCustomers,
         verification_rate: totalCustomers > 0 ? (verifiedCustomers / totalCustomers) * 100 : 0,
-        retention_breakdown: customersByRetention.reduce((acc, item) => {
-          acc[item.retention_status] = item._count;
-          return acc;
-        }, {}),
+        retention_breakdown: {},
         recent_customers: recentCustomers,
-        average_jobs_per_customer: averageJobsPerCustomer._avg.total_jobs || 0
+        average_jobs_per_customer: totalCustomers > 0 ? totalJobsCount / totalCustomers : 0
       };
     } catch (error) {
       throw new BadRequestException('Failed to fetch customer statistics');
@@ -423,9 +375,8 @@ export class CustomersService {
       id: customer.id,
       address: customer.address,
       user: customer.user,
-      customer_retention_metrics: customer.customer_retention_metrics,
-      total_jobs: customer.customer_retention_metrics?.[0]?.total_jobs || 0,
-      total_spent: customer.customer_retention_metrics?.[0]?.total_spent || 0,
+      total_jobs: customer.jobs?.length || 0,
+      total_spent: 0,
       average_rating: this.calculateAverageRating(customer.jobs)
     }, { excludeExtraneousValues: true });
 
@@ -436,7 +387,7 @@ export class CustomersService {
     if (!jobs || jobs.length === 0) return 0;
 
     const ratingsWithFeedback = jobs
-      .flatMap(job => job.ratings_feedback)
+      .flatMap(job => job.feedbacks)
       .filter(rating => rating.rating && rating.rating > 0);
 
     if (ratingsWithFeedback.length === 0) return 0;

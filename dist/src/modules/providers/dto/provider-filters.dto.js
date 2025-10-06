@@ -48,9 +48,9 @@ __decorate([
     __metadata("design:type", String)
 ], ProviderFiltersDto.prototype, "location", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'Filter by provider tier', enum: client_1.ProviderTier }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Filter by provider tier' }),
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(client_1.ProviderTier),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], ProviderFiltersDto.prototype, "tier", void 0);
 __decorate([

@@ -7,6 +7,7 @@ export declare class OAuthService {
     private readonly jwtService;
     private readonly configService;
     constructor(prisma: PrismaService, jwtService: JwtService, configService: ConfigService);
+    private mapUserRoleToPrisma;
     private hashPassword;
     private comparePassword;
     register(registerDto: RegisterDto): Promise<{
@@ -40,4 +41,19 @@ export declare class OAuthService {
     }>;
     getProfile(userId: number): Promise<any>;
     logout(userId: number): Promise<void>;
+    updateProfile(userId: number, dto: {
+        firstName?: string;
+        lastName?: string;
+        phoneNumber?: string;
+        profilePicture?: string;
+    }): Promise<{
+        email: string;
+        role: import(".prisma/client").$Enums.Role;
+        id: number;
+        first_name: string;
+        last_name: string;
+        phone_number: string;
+        profile_picture: string;
+        updated_at: Date;
+    }>;
 }

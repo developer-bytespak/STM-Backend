@@ -13,7 +13,6 @@ exports.CustomerFiltersDto = void 0;
 const class_validator_1 = require("class-validator");
 const swagger_1 = require("@nestjs/swagger");
 const class_transformer_1 = require("class-transformer");
-const client_1 = require("@prisma/client");
 class CustomerFiltersDto {
     constructor() {
         this.page = 1;
@@ -41,12 +40,6 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CustomerFiltersDto.prototype, "phone_number", void 0);
-__decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'Filter by retention status' }),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(client_1.RetentionStatus),
-    __metadata("design:type", String)
-], CustomerFiltersDto.prototype, "retention_status", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'Filter by email verification status' }),
     (0, class_validator_1.IsOptional)(),

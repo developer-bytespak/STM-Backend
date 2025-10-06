@@ -15,7 +15,7 @@ const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 class CreateProviderDto {
     constructor() {
-        this.tier = client_1.ProviderTier.Bronze;
+        this.tier = 'Bronze';
         this.status = client_1.ProviderStatus.active;
         this.is_active = true;
     }
@@ -77,9 +77,9 @@ __decorate([
     __metadata("design:type", Number)
 ], CreateProviderDto.prototype, "lsm_id", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'Provider tier', enum: client_1.ProviderTier, default: 'Bronze' }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Provider tier', default: 'Bronze' }),
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(client_1.ProviderTier),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateProviderDto.prototype, "tier", void 0);
 __decorate([

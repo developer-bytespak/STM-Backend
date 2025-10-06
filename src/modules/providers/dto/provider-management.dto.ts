@@ -1,6 +1,6 @@
-import { IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { IsOptional, IsEnum, IsInt, Min, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ProviderTier, ProviderStatus } from '@prisma/client';
+import { ProviderStatus } from '@prisma/client';
 
 export class ProviderManagementDto {
   @ApiPropertyOptional({ description: 'Provider status', enum: ProviderStatus })
@@ -8,10 +8,10 @@ export class ProviderManagementDto {
   @IsEnum(ProviderStatus)
   status?: ProviderStatus;
 
-  @ApiPropertyOptional({ description: 'Provider tier', enum: ProviderTier })
+  @ApiPropertyOptional({ description: 'Provider tier' })
   @IsOptional()
-  @IsEnum(ProviderTier)
-  tier?: ProviderTier;
+  @IsString()
+  tier?: string;
 
   @ApiPropertyOptional({ description: 'Local Service Manager ID for assignment/reassignment' })
   @IsOptional()

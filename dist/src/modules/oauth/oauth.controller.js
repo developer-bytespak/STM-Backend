@@ -22,6 +22,7 @@ const refresh_token_dto_1 = require("./dto/refresh-token.dto");
 const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
 const local_auth_guard_1 = require("./guards/local-auth.guard");
 const decorators_1 = require("./decorators");
+const update_profile_dto_1 = require("./dto/update-profile.dto");
 let OAuthController = class OAuthController {
     constructor(oauthService) {
         this.oauthService = oauthService;
@@ -50,6 +51,9 @@ let OAuthController = class OAuthController {
     async logout(userId) {
         await this.oauthService.logout(userId);
         return { message: 'Logged out successfully' };
+    }
+    async updateMe(userId, body) {
+        return this.oauthService.updateProfile(userId, body);
     }
 };
 exports.OAuthController = OAuthController;
@@ -125,6 +129,20 @@ __decorate([
     __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", Promise)
 ], OAuthController.prototype, "logout", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, swagger_1.ApiBearerAuth)(),
+    (0, common_1.Patch)('me'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({ summary: 'Update current user profile' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: 'Profile updated successfully' }),
+    (0, swagger_1.ApiResponse)({ status: 401, description: 'Unauthorized' }),
+    __param(0, (0, decorators_1.CurrentUser)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, update_profile_dto_1.UpdateProfileDto]),
+    __metadata("design:returntype", Promise)
+], OAuthController.prototype, "updateMe", null);
 exports.OAuthController = OAuthController = __decorate([
     (0, common_1.Controller)('auth'),
     (0, swagger_1.ApiTags)('authentication'),

@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exclude, Expose, Type } from 'class-transformer';
-import { ProviderTier, ProviderStatus } from '@prisma/client';
+import { ProviderStatus } from '@prisma/client';
 
 export class UserResponseDto {
   @ApiProperty()
@@ -119,9 +119,9 @@ export class ProviderResponseDto {
   @Expose()
   rating: number;
 
-  @ApiProperty({ enum: ProviderTier })
+  @ApiProperty()
   @Expose()
-  tier: ProviderTier;
+  tier: string;
 
   @ApiProperty()
   @Expose()

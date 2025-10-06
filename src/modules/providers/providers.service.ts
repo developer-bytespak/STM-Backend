@@ -8,7 +8,7 @@ import { ProviderResponseDto } from './dto/provider-response.dto';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { plainToClass } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { Role, ProviderTier, ProviderStatus, ApprovalStatus } from '@prisma/client';
+import { Role, ProviderStatus, ApprovalStatus } from '@prisma/client';
 
 @Injectable()
 export class ProvidersService {
@@ -60,7 +60,7 @@ export class ProvidersService {
             description: createProviderDto.description,
             location: createProviderDto.location,
             lsm_id: createProviderDto.lsm_id,
-            tier: createProviderDto.tier || ProviderTier.Bronze,
+            tier: createProviderDto.tier || 'Bronze',
             status: createProviderDto.status || ProviderStatus.active,
             is_active: createProviderDto.is_active !== undefined ? createProviderDto.is_active : true,
           },
@@ -71,9 +71,6 @@ export class ProvidersService {
                 user: true
               }
             },
-            performance_metrics: true,
-            created_services: true,
-            provided_services: true,
           }
         });
 
@@ -250,11 +247,6 @@ export class ProvidersService {
                 user: true
               }
             },
-            performance_metrics: {
-              orderBy: { created_at: 'desc' }
-            },
-            created_services: true,
-            provided_services: true,
           },
           skip,
           take: limit,
@@ -287,11 +279,6 @@ export class ProvidersService {
               user: true
             }
           },
-          performance_metrics: {
-            orderBy: { created_at: 'desc' }
-          },
-          created_services: true,
-          provided_services: true,
         }
       });
 
@@ -319,11 +306,6 @@ export class ProvidersService {
               user: true
             }
           },
-          performance_metrics: {
-            orderBy: { created_at: 'desc' }
-          },
-          created_services: true,
-          provided_services: true,
         }
       });
 
@@ -421,11 +403,6 @@ export class ProvidersService {
                 user: true
               }
             },
-            performance_metrics: {
-              orderBy: { created_at: 'desc' }
-            },
-            created_services: true,
-            provided_services: true,
           }
         });
       });
@@ -477,11 +454,6 @@ export class ProvidersService {
               user: true
             }
           },
-          performance_metrics: {
-            orderBy: { created_at: 'desc' }
-          },
-          created_services: true,
-          provided_services: true,
         }
       });
 
@@ -534,11 +506,12 @@ export class ProvidersService {
       }
 
       // Create service with pending approval
-      const service = await this.prisma.services.create({
+        const service = await this.prisma.services.create({
         data: {
           name: createServiceDto.name,
           description: createServiceDto.description,
-          created_by: providerId,
+            category: 'General',
+          // services model no longer has created_by; keeping minimal fields
           status: ApprovalStatus.pending, // Requires LSM approval
         }
       });
@@ -549,8 +522,7 @@ export class ProvidersService {
           data: {
             provider_id: providerId,
             service_id: service.id,
-            min_price: createServiceDto.min_price,
-            max_price: createServiceDto.max_price,
+            // pricing fields removed from schema
           }
         });
       }
@@ -572,8 +544,7 @@ export class ProvidersService {
       const provider = await this.prisma.service_providers.findUnique({
         where: { id: providerId },
         include: {
-          created_services: true,
-          provided_services: {
+          provider_services: {
             include: {
               service: true
             }
@@ -586,10 +557,8 @@ export class ProvidersService {
       }
 
       return {
-        created_services: provider.created_services,
-        available_services: provider.provided_services,
-        total_created: provider.created_services.length,
-        total_available: provider.provided_services.length
+        available_services: provider.provider_services,
+        total_available: provider.provider_services.length
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -705,10 +674,6 @@ export class ProvidersService {
       total_jobs: provider.total_jobs,
       user: provider.user,
       local_service_manager: provider.local_service_manager,
-      performance_metrics: provider.performance_metrics,
-      latest_performance: provider.performance_metrics?.[0],
-      total_services_created: provider.created_services?.length || 0,
-      total_available_services: provider.provided_services?.length || 0,
     }, { excludeExtraneousValues: true });
 
     return response;

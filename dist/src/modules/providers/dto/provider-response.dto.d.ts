@@ -1,4 +1,4 @@
-import { ProviderTier, ProviderStatus } from '@prisma/client';
+import { ProviderStatus } from '@prisma/client';
 export declare class UserResponseDto {
     id: number;
     first_name: string;
@@ -34,7 +34,7 @@ export declare class ProviderResponseDto {
     experience: number;
     description: string;
     rating: number;
-    tier: ProviderTier;
+    tier: string;
     location: string;
     is_active: boolean;
     status: ProviderStatus;
