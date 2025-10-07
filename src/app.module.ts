@@ -12,7 +12,7 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { LsmModule } from './modules/lsm/lsm.module';
 import { ProviderOnboardingModule } from './modules/provider-onboarding/provider-onboarding.module';
-import { JobManagementModule } from './modules/job-management/job-management.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ServicesModule } from './modules/services/search-matching.module';
@@ -20,7 +20,7 @@ import { PaymentsModule } from './modules/payments/payment.module';
 import { RatingsModule } from './modules/ratings/ratings-feedback.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.module';
-import { AdminModule } from './modules/admin/admin-dashboard.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -40,7 +40,7 @@ import { AdminModule } from './modules/admin/admin-dashboard.module';
     ProvidersModule,
     LsmModule,
     ProviderOnboardingModule,
-    JobManagementModule,
+    JobsModule,
     ChatModule,
     NotificationsModule,
     ServicesModule,

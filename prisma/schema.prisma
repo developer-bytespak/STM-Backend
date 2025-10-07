@@ -155,6 +155,7 @@ model service_providers {
   provider_services provider_services[]
   service_areas     provider_service_areas[]
   documents         provider_documents[]
+  service_requests  service_requests[]
 }
 
 // -------------------- LOCAL SERVICE MANAGER --------------------
@@ -198,6 +199,11 @@ model services {
   provider_services provider_services[]
   jobs              jobs[]
   search_logs       service_search_logs[]
+  service_requests  service_requests[] // Track which requests created this service
+
+  @@index([status])
+  @@index([category])
+  @@index([name])
 }
 
 // -------------------- JOBS --------------------
@@ -319,15 +325,48 @@ model service_search_logs {
 // -------------------- SERVICE REQUESTS --------------------
 
 model service_requests {
-  id          Int        @id @default(autoincrement())
-  keyword     String
-  zipcode     String?
-  region      String?
-  customer_id Int?
-  customer    customers? @relation(fields: [customer_id], references: [id])
+  id Int @id @default(autoincrement())
+
+  // Provider who requested the service
+  provider_id Int
+  provider    service_providers @relation(fields: [provider_id], references: [id])
+
+  // Service details
+  service_name   String
+  category       String
+  description    String?
+  questions_json Json?
+  keyword        String? // Keep for backward compatibility
+
+  // Location
+  zipcode String?
+  region  String?
+
+  // Approval workflow
+  lsm_approved           Boolean        @default(false)
+  admin_approved         Boolean        @default(false)
+  lsm_reviewed_by        Int?
+  admin_reviewed_by      Int?
+  lsm_reviewed_at        DateTime?
+  admin_reviewed_at      DateTime?
+  lsm_rejection_reason   String?
+  admin_rejection_reason String?
+  final_status           ApprovalStatus @default(pending)
+
+  // Created service (after approval)
+  created_service_id Int?
+  created_service    services? @relation(fields: [created_service_id], references: [id])
+
+  // Legacy fields
   email_sent  Boolean    @default(false)
   reviewed    Boolean    @default(false)
   created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+  customers   customers? @relation(fields: [customersId], references: [id])
+  customersId Int?
+
+  @@index([provider_id])
+  @@index([final_status])
 }
 
 // -------------------- PROVIDER SERVICES (JUNCTION TABLE) --------------------
