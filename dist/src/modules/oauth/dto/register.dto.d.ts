@@ -11,4 +11,12 @@ export declare class RegisterDto {
     address?: string;
     location?: string;
     experience?: number;
+    businessName?: string;
+    serviceType?: string;
+    experienceLevel?: string;
+    description?: string;
+    zipCodes?: string[];
+    minPrice?: number;
+    maxPrice?: number;
+    acceptedTerms?: boolean;
 }

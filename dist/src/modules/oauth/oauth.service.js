@@ -74,6 +74,16 @@ let OAuthService = class OAuthService {
                 throw new common_1.BadRequestException(`Invalid role: ${role}. Valid roles are: CUSTOMER, PROVIDER, LSM, ADMIN`);
         }
     }
+    convertExperienceToYears(experienceLevel) {
+        const experienceMap = {
+            'Less than 1 year': 0,
+            '1-2 years': 1,
+            '3-5 years': 3,
+            '6-10 years': 6,
+            'More than 10 years': 10,
+        };
+        return experienceMap[experienceLevel] ?? 0;
+    }
     async hashPassword(password) {
         const saltRounds = 12;
         return bcrypt.hash(password, saltRounds);
@@ -82,7 +92,7 @@ let OAuthService = class OAuthService {
         return bcrypt.compare(password, hash);
     }
     async register(registerDto) {
-        const { email, password, firstName, lastName, phoneNumber, role, region, zipcode, address, location, experience } = registerDto;
+        const { email, password, firstName, lastName, phoneNumber, role, region, zipcode, address, location, experience, businessName, serviceType, experienceLevel, description, zipCodes, minPrice, maxPrice, acceptedTerms, } = registerDto;
         const existingUser = await this.prisma.users.findUnique({
             where: { email },
         });
@@ -128,16 +138,54 @@ let OAuthService = class OAuthService {
                     if (!availableLSM) {
                         throw new common_1.BadRequestException(`No active LSM available in region "${region}". Please contact admin to create an LSM for this region.`);
                     }
-                    await prisma.service_providers.create({
+                    const experienceYears = experienceLevel
+                        ? this.convertExperienceToYears(experienceLevel)
+                        : (experience || 0);
+                    if (minPrice !== undefined && maxPrice !== undefined && maxPrice < minPrice) {
+                        throw new common_1.BadRequestException('Maximum price must be greater than minimum price.');
+                    }
+                    const serviceProvider = await prisma.service_providers.create({
                         data: {
                             user_id: newUser.id,
-                            experience: experience || 0,
+                            business_name: businessName || null,
+                            experience: experienceYears,
+                            experience_level: experienceLevel || null,
+                            description: description || null,
                             location: location || 'Not provided',
-                            zipcode: zipcode || null,
+                            zipcode: zipCodes?.[0] || zipcode || null,
+                            min_price: minPrice || null,
+                            max_price: maxPrice || null,
                             lsm_id: availableLSM.id,
                             status: 'pending',
+                            terms_accepted_at: acceptedTerms ? new Date() : null,
                         },
                     });
+                    if (zipCodes && zipCodes.length > 0) {
+                        await prisma.provider_service_areas.createMany({
+                            data: zipCodes.map((zip, index) => ({
+                                provider_id: serviceProvider.id,
+                                zipcode: zip.trim(),
+                                is_primary: index === 0,
+                            })),
+                            skipDuplicates: true,
+                        });
+                    }
+                    if (serviceType) {
+                        const service = await prisma.services.findFirst({
+                            where: {
+                                name: { equals: serviceType, mode: 'insensitive' },
+                            },
+                        });
+                        if (service) {
+                            await prisma.provider_services.create({
+                                data: {
+                                    provider_id: serviceProvider.id,
+                                    service_id: service.id,
+                                    is_active: true,
+                                },
+                            });
+                        }
+                    }
                     break;
                 case user_role_enum_1.UserRole.LSM:
                     if (!region) {
@@ -311,11 +359,46 @@ let OAuthService = class OAuthService {
                                 region: true,
                             },
                         },
+                        service_areas: {
+                            select: {
+                                id: true,
+                                zipcode: true,
+                                is_primary: true,
+                            },
+                            orderBy: {
+                                is_primary: 'desc',
+                            },
+                        },
+                        documents: {
+                            select: {
+                                id: true,
+                                file_name: true,
+                                description: true,
+                                status: true,
+                                created_at: true,
+                            },
+                            orderBy: {
+                                created_at: 'desc',
+                            },
+                        },
+                        provider_services: {
+                            include: {
+                                service: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        category: true,
+                                    },
+                                },
+                            },
+                        },
                         _count: {
                             select: {
                                 jobs: true,
                                 feedbacks: true,
                                 provider_services: true,
+                                service_areas: true,
+                                documents: true,
                             },
                         },
                     },
