@@ -42,6 +42,23 @@ export class OAuthService {
     }
   }
 
+  /**
+   * Convert experience level string to years (integer)
+   * @param experienceLevel - Experience level string from frontend
+   * @returns Number of years
+   */
+  private convertExperienceToYears(experienceLevel: string): number {
+    const experienceMap: Record<string, number> = {
+      'Less than 1 year': 0,
+      '1-2 years': 1,
+      '3-5 years': 3,
+      '6-10 years': 6,
+      'More than 10 years': 10,
+    };
+    
+    return experienceMap[experienceLevel] ?? 0;
+  }
+
   // ============================================
   // STEP 2.1: Password Hashing Utility Methods
   // ============================================
@@ -79,8 +96,28 @@ export class OAuthService {
    * @returns JWT tokens and user data
    */
   async register(registerDto: RegisterDto) {
-    const { email, password, firstName, lastName, phoneNumber, role, region, zipcode, address, location, experience } =
-      registerDto;
+    const { 
+      email, 
+      password, 
+      firstName, 
+      lastName, 
+      phoneNumber, 
+      role, 
+      region, 
+      zipcode, 
+      address, 
+      location, 
+      experience,
+      // Service Provider specific fields
+      businessName,
+      serviceType,
+      experienceLevel,
+      description,
+      zipCodes,
+      minPrice,
+      maxPrice,
+      acceptedTerms,
+    } = registerDto;
 
     // Check if user already exists
     const existingUser = await this.prisma.users.findUnique({
@@ -148,17 +185,67 @@ export class OAuthService {
               `No active LSM available in region "${region}". Please contact admin to create an LSM for this region.`,
             );
           }
-          
-          await prisma.service_providers.create({
+
+          // Convert experience level to years
+          const experienceYears = experienceLevel 
+            ? this.convertExperienceToYears(experienceLevel)
+            : (experience || 0);
+
+          // Validate price range
+          if (minPrice !== undefined && maxPrice !== undefined && maxPrice < minPrice) {
+            throw new BadRequestException('Maximum price must be greater than minimum price.');
+          }
+
+          // Create service provider with all new fields
+          const serviceProvider = await prisma.service_providers.create({
             data: {
               user_id: newUser.id,
-              experience: experience || 0, // Use provided experience or default
-              location: location || 'Not provided', // Use provided location or default
-              zipcode: zipcode || null, // Optional field
-              lsm_id: availableLSM.id, // Required field - region-specific LSM
+              business_name: businessName || null,
+              experience: experienceYears,
+              experience_level: experienceLevel || null,
+              description: description || null,
+              location: location || 'Not provided',
+              zipcode: zipCodes?.[0] || zipcode || null, // Primary zipcode
+              min_price: minPrice || null,
+              max_price: maxPrice || null,
+              lsm_id: availableLSM.id,
               status: 'pending', // Requires LSM approval
+              terms_accepted_at: acceptedTerms ? new Date() : null,
             },
           });
+
+          // Create service area records for all zip codes
+          if (zipCodes && zipCodes.length > 0) {
+            await prisma.provider_service_areas.createMany({
+              data: zipCodes.map((zip, index) => ({
+                provider_id: serviceProvider.id,
+                zipcode: zip.trim(),
+                is_primary: index === 0, // First zipcode is primary
+              })),
+              skipDuplicates: true, // Skip if zipcode already exists for this provider
+            });
+          }
+
+          // Link to primary service type if provided
+          if (serviceType) {
+            // Find the service by name (case-insensitive)
+            const service = await prisma.services.findFirst({
+              where: {
+                name: { equals: serviceType, mode: 'insensitive' },
+              },
+            });
+
+            if (service) {
+              await prisma.provider_services.create({
+                data: {
+                  provider_id: serviceProvider.id,
+                  service_id: service.id,
+                  is_active: true,
+                },
+              });
+            }
+          }
+          
           break;
 
         case UserRole.LSM:
@@ -436,11 +523,46 @@ export class OAuthService {
                 region: true,
               },
             },
+            service_areas: {
+              select: {
+                id: true,
+                zipcode: true,
+                is_primary: true,
+              },
+              orderBy: {
+                is_primary: 'desc', // Primary zipcode first
+              },
+            },
+            documents: {
+              select: {
+                id: true,
+                file_name: true,
+                description: true,
+                status: true,
+                created_at: true,
+              },
+              orderBy: {
+                created_at: 'desc',
+              },
+            },
+            provider_services: {
+              include: {
+                service: {
+                  select: {
+                    id: true,
+                    name: true,
+                    category: true,
+                  },
+                },
+              },
+            },
             _count: {
               select: {
                 jobs: true,
                 feedbacks: true,
                 provider_services: true,
+                service_areas: true,
+                documents: true,
               },
             },
           },

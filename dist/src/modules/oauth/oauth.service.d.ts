@@ -8,6 +8,7 @@ export declare class OAuthService {
     private readonly configService;
     constructor(prisma: PrismaService, jwtService: JwtService, configService: ConfigService);
     private mapUserRoleToPrisma;
+    private convertExperienceToYears;
     private hashPassword;
     private comparePassword;
     register(registerDto: RegisterDto): Promise<{

@@ -1,6 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsPhoneNumber, IsOptional } from 'class-validator';
+import { 
+  IsEmail, 
+  IsNotEmpty, 
+  IsString, 
+  MinLength, 
+  IsEnum, 
+  IsPhoneNumber, 
+  IsOptional, 
+  IsArray, 
+  ArrayMinSize, 
+  IsNumber, 
+  Min, 
+  IsBoolean 
+} from 'class-validator';
 import { UserRole } from '../../users/enums/user-role.enum';
+import { Type } from 'class-transformer';
 
 export class RegisterDto {
   @ApiProperty({
@@ -91,5 +105,87 @@ export class RegisterDto {
     example: 5,
   })
   @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
   experience?: number;
+
+  // ==================== SERVICE PROVIDER SPECIFIC FIELDS ====================
+
+  @ApiPropertyOptional({
+    description: 'Business name (for PROVIDER role)',
+    example: 'ABC Plumbing Services',
+  })
+  @IsString()
+  @IsOptional()
+  businessName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Primary service type (for PROVIDER role)',
+    example: 'Plumbing',
+  })
+  @IsString()
+  @IsOptional()
+  serviceType?: string;
+
+  @ApiPropertyOptional({
+    description: 'Experience level string (for PROVIDER role)',
+    example: '3-5 years',
+    enum: [
+      'Less than 1 year',
+      '1-2 years',
+      '3-5 years',
+      '6-10 years',
+      'More than 10 years',
+    ],
+  })
+  @IsString()
+  @IsOptional()
+  experienceLevel?: string;
+
+  @ApiPropertyOptional({
+    description: 'Service description (for PROVIDER role)',
+    example: 'Professional plumbing services with 10+ years experience',
+  })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiPropertyOptional({
+    description: 'Array of service zip codes (for PROVIDER role)',
+    example: ['10001', '10002', '10003'],
+    type: [String],
+  })
+  @IsArray()
+  @IsOptional()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  zipCodes?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Minimum service price in USD (for PROVIDER role)',
+    example: 100,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Type(() => Number)
+  minPrice?: number;
+
+  @ApiPropertyOptional({
+    description: 'Maximum service price in USD (for PROVIDER role)',
+    example: 500,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Type(() => Number)
+  maxPrice?: number;
+
+  @ApiPropertyOptional({
+    description: 'Terms and conditions acceptance (for PROVIDER role)',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  acceptedTerms?: boolean;
 }

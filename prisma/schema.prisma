@@ -23,6 +23,12 @@ enum ProviderStatus {
   banned
 }
 
+enum DocumentStatus {
+  pending
+  verified
+  rejected
+}
+
 enum LSMStatus {
   active
   inactive
@@ -118,10 +124,14 @@ model service_providers {
   id                    Int                    @id @default(autoincrement())
   user_id               Int                    @unique
   user                  users                  @relation(fields: [user_id], references: [id])
+  business_name         String?
   experience            Int
+  experience_level      String? // Store original experience level string
   description           String?
   location              String
-  zipcode               String?
+  zipcode               String? // Primary zipcode
+  min_price             Decimal?               @db.Decimal(10, 2)
+  max_price             Decimal?               @db.Decimal(10, 2)
   rating                Decimal                @default(0.0) @db.Decimal(3, 2)
   tier                  String                 @default("Bronze")
   status                ProviderStatus         @default(pending)
@@ -133,6 +143,7 @@ model service_providers {
   warnings              Int                    @default(0)
   rejection_reason      String?
   approved_at           DateTime?
+  terms_accepted_at     DateTime?
   is_deleted            Boolean                @default(false)
   deleted_at            DateTime?
   created_at            DateTime               @default(now())
@@ -142,6 +153,8 @@ model service_providers {
   chats             chat[]
   feedbacks         ratings_feedback[]
   provider_services provider_services[]
+  service_areas     provider_service_areas[]
+  documents         provider_documents[]
 }
 
 // -------------------- LOCAL SERVICE MANAGER --------------------
@@ -329,4 +342,39 @@ model provider_services {
   created_at  DateTime          @default(now())
 
   @@unique([provider_id, service_id])
+}
+
+// -------------------- PROVIDER SERVICE AREAS (MULTIPLE ZIPCODES) --------------------
+
+model provider_service_areas {
+  id          Int               @id @default(autoincrement())
+  provider_id Int
+  provider    service_providers @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  zipcode     String
+  is_primary  Boolean           @default(false)
+  created_at  DateTime          @default(now())
+
+  @@unique([provider_id, zipcode])
+  @@index([zipcode])
+  @@index([provider_id])
+}
+
+// -------------------- PROVIDER DOCUMENTS (CREDENTIALS) --------------------
+
+model provider_documents {
+  id          Int               @id @default(autoincrement())
+  provider_id Int
+  provider    service_providers @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  file_name   String
+  file_path   String // S3/storage path or base64 for now
+  file_type   String // MIME type
+  file_size   Int // in bytes
+  description String
+  status      DocumentStatus    @default(pending)
+  verified_by Int? // LSM user_id who verified
+  verified_at DateTime?
+  created_at  DateTime          @default(now())
+  updated_at  DateTime          @updatedAt
+
+  @@index([provider_id])
 }
