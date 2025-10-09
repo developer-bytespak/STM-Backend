@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   ParseIntPipe,
   UseGuards,
   HttpCode,
@@ -19,6 +20,8 @@ import {
 } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { CreateLsmDto } from './dto/create-lsm.dto';
+import { UpdateLsmDto } from './dto/update-lsm.dto';
+import { ReplaceLsmDto } from './dto/replace-lsm.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { BanProviderDto } from './dto/ban-provider.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
@@ -121,6 +124,27 @@ export class AdminController {
   // ==================== LSM MANAGEMENT ====================
 
   /**
+   * Get all LSMs
+   */
+  @Get('lsms')
+  @ApiOperation({ summary: 'Get all Local Service Managers' })
+  @ApiResponse({ status: 200, description: 'LSMs retrieved successfully' })
+  async getAllLsms() {
+    return this.adminService.getAllLsms();
+  }
+
+  /**
+   * Get LSM by ID
+   */
+  @Get('lsms/:id')
+  @ApiOperation({ summary: 'Get LSM details by ID' })
+  @ApiResponse({ status: 200, description: 'LSM retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'LSM not found' })
+  async getLsmById(@Param('id', ParseIntPipe) lsmId: number) {
+    return this.adminService.getLsmById(lsmId);
+  }
+
+  /**
    * Create a new LSM
    */
   @Post('lsm/create')
@@ -131,7 +155,94 @@ export class AdminController {
     return this.adminService.createLsm(dto);
   }
 
+  /**
+   * Update LSM information
+   */
+  @Put('lsms/:id')
+  @ApiOperation({ summary: 'Update LSM information (name, region, status)' })
+  @ApiResponse({ status: 200, description: 'LSM updated successfully' })
+  @ApiResponse({ status: 404, description: 'LSM not found' })
+  @ApiResponse({ status: 409, description: 'Region already has another LSM' })
+  async updateLsm(
+    @Param('id', ParseIntPipe) lsmId: number,
+    @Body() dto: UpdateLsmDto,
+  ) {
+    return this.adminService.updateLsm(lsmId, dto);
+  }
+
+  /**
+   * Replace LSM - Create new LSM and handle old one
+   */
+  @Post('lsms/:id/replace')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Replace LSM with a new one (creates new LSM, reassigns providers, handles old LSM)'
+  })
+  @ApiResponse({ status: 200, description: 'LSM replaced successfully' })
+  @ApiResponse({ status: 404, description: 'LSM not found' })
+  @ApiResponse({ status: 409, description: 'Email already exists or region conflict' })
+  async replaceLsm(
+    @Param('id', ParseIntPipe) oldLsmId: number,
+    @Body() dto: ReplaceLsmDto,
+  ) {
+    return this.adminService.replaceLsm(oldLsmId, dto);
+  }
+
+  /**
+   * Deactivate/Delete LSM
+   */
+  @Delete('lsms/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Deactivate an LSM (cannot delete if has active providers)' })
+  @ApiResponse({ status: 200, description: 'LSM deactivated successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot delete LSM with active providers' })
+  @ApiResponse({ status: 404, description: 'LSM not found' })
+  async deleteLsm(@Param('id', ParseIntPipe) lsmId: number) {
+    return this.adminService.deleteLsm(lsmId);
+  }
+
   // ==================== PROVIDER MANAGEMENT ====================
+
+  /**
+   * Get all providers with filters and search
+   */
+  @Get('providers')
+  @ApiOperation({ summary: 'Get all service providers with filters' })
+  @ApiResponse({ status: 200, description: 'Providers retrieved successfully' })
+  async getAllProviders(
+    @Query('search') search?: string,
+    @Query('region') region?: string,
+    @Query('status') status?: string,
+    @Query('minRating') minRating?: string,
+    @Query('maxRating') maxRating?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+  ) {
+    return this.adminService.getAllProviders({
+      search,
+      region,
+      status,
+      minRating: minRating ? parseFloat(minRating) : undefined,
+      maxRating: maxRating ? parseFloat(maxRating) : undefined,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+      sortBy: sortBy || 'created_at',
+      sortOrder: sortOrder || 'desc',
+    });
+  }
+
+  /**
+   * Get provider by ID with detailed stats
+   */
+  @Get('providers/:id')
+  @ApiOperation({ summary: 'Get provider details by ID' })
+  @ApiResponse({ status: 200, description: 'Provider retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Provider not found' })
+  async getProviderById(@Param('id', ParseIntPipe) providerId: number) {
+    return this.adminService.getProviderById(providerId);
+  }
 
   /**
    * Ban a service provider

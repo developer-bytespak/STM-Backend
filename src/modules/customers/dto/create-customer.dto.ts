@@ -1,6 +1,5 @@
-import { IsString, IsEmail, IsNotEmpty, IsOptional, IsEnum, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 
 export class CreateCustomerDto {
   @ApiProperty({ description: 'Customer first name' })
@@ -27,6 +26,11 @@ export class CreateCustomerDto {
   @IsString()
   @IsNotEmpty()
   address: string;
+
+  @ApiProperty({ description: 'Customer region' })
+  @IsString()
+  @IsNotEmpty()
+  region: string;
 
   @ApiProperty({ description: 'Customer password', minLength: 6 })
   @IsString()

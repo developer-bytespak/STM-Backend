@@ -46,6 +46,12 @@ __decorate([
     __metadata("design:type", String)
 ], CreateCustomerDto.prototype, "address", void 0);
 __decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Customer region' }),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], CreateCustomerDto.prototype, "region", void 0);
+__decorate([
     (0, swagger_1.ApiProperty)({ description: 'Customer password', minLength: 6 }),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(6),

@@ -48,13 +48,13 @@ export declare class OAuthService {
         phoneNumber?: string;
         profilePicture?: string;
     }): Promise<{
+        id: number;
+        updated_at: Date;
         email: string;
         role: import(".prisma/client").$Enums.Role;
-        id: number;
         first_name: string;
         last_name: string;
         phone_number: string;
         profile_picture: string;
-        updated_at: Date;
     }>;
 }

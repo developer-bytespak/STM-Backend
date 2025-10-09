@@ -313,7 +313,7 @@ export class LsmService {
       },
     });
 
-    // Notify provider
+    // Notify provider about document status
     await this.prisma.notifications.create({
       data: {
         recipient_type: 'service_provider',
@@ -326,14 +326,77 @@ export class LsmService {
         message:
           dto.action === DocumentAction.VERIFY
             ? `Your document "${document.file_name}" has been verified`
-            : `Your document "${document.file_name}" was rejected. Reason: ${dto.reason}`,
+            : `Your document "${document.file_name}" was rejected. Reason: ${dto.reason}. Please re-upload the correct document.`,
       },
     });
+
+    // AUTO-ACTIVATION LOGIC
+    // If document was verified, check if all documents are verified
+    if (dto.action === DocumentAction.VERIFY && provider.status === 'pending') {
+      // Count total documents for this provider
+      const totalDocuments = await this.prisma.provider_documents.count({
+        where: { provider_id: providerId },
+      });
+
+      // Count verified documents
+      const verifiedDocuments = await this.prisma.provider_documents.count({
+        where: {
+          provider_id: providerId,
+          status: 'verified',
+        },
+      });
+
+      // Minimum required documents (e.g., at least 2: Business License + Insurance)
+      const MIN_REQUIRED_DOCS = 2;
+
+      // If provider has minimum required docs AND all are verified, activate them
+      if (totalDocuments >= MIN_REQUIRED_DOCS && verifiedDocuments === totalDocuments) {
+        // Activate the provider
+        await this.prisma.service_providers.update({
+          where: { id: providerId },
+          data: {
+            status: 'active',
+            approved_at: new Date(),
+          },
+        });
+
+        // Send activation notification
+        await this.prisma.notifications.create({
+          data: {
+            recipient_type: 'service_provider',
+            recipient_id: provider.user_id,
+            type: 'system',
+            title: '🎉 Account Activated!',
+            message: `Congratulations! All your documents have been verified. Your account is now active and you can start receiving job requests.`,
+          },
+        });
+
+        return {
+          id: updated.id,
+          status: updated.status,
+          action: dto.action,
+          providerStatus: 'active',
+          message: 'Document verified successfully. Provider account activated!',
+        };
+      }
+    }
+
+    // Document rejected - status remains pending
+    if (dto.action === DocumentAction.REJECT) {
+      return {
+        id: updated.id,
+        status: updated.status,
+        action: dto.action,
+        providerStatus: provider.status,
+        message: 'Document rejected. Provider must re-upload. Account status remains pending.',
+      };
+    }
 
     return {
       id: updated.id,
       status: updated.status,
       action: dto.action,
+      providerStatus: provider.status,
       message:
         dto.action === DocumentAction.VERIFY
           ? 'Document verified successfully'

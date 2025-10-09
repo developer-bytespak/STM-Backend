@@ -4,6 +4,7 @@ export declare class CreateCustomerDto {
     email: string;
     phone_number: string;
     address: string;
+    region: string;
     password: string;
     profile_picture?: any;
 }

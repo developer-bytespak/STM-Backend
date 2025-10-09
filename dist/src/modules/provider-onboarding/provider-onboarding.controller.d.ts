@@ -17,10 +17,10 @@ export declare class ProviderOnboardingController {
         created_at: Date;
     }>;
     getMyDocuments(userId: number): Promise<{
-        description: string;
         id: number;
-        created_at: Date;
+        description: string;
         status: import(".prisma/client").$Enums.DocumentStatus;
+        created_at: Date;
         file_name: string;
         file_type: string;
         file_size: number;
