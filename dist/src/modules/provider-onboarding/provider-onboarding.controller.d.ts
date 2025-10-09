@@ -18,9 +18,9 @@ export declare class ProviderOnboardingController {
     }>;
     getMyDocuments(userId: number): Promise<{
         id: number;
-        description: string;
-        status: import(".prisma/client").$Enums.DocumentStatus;
         created_at: Date;
+        status: import(".prisma/client").$Enums.DocumentStatus;
+        description: string;
         file_name: string;
         file_type: string;
         file_size: number;
