@@ -21,6 +21,15 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
+import { JobActionDto } from './dto/job-action.dto';
+import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
+import { FileDisputeDto } from './dto/file-dispute.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
+import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
+import { RolesGuard } from '../oauth/guards/roles.guard';
+import { Roles } from '../oauth/decorators/roles.decorator';
+import { CurrentUser } from '../oauth/decorators/current-user.decorator';
+import { UserRole } from '../users/enums/user-role.enum';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -117,5 +126,141 @@ export class CustomersController {
   @ApiResponse({ status: 404, description: 'Customer not found' })
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.customersService.remove(id);
+  }
+
+  // ==================== CUSTOMER-FACING APIS ====================
+
+  /**
+   * Get customer dashboard
+   */
+  @Get('dashboard')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer dashboard with statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard retrieved successfully' })
+  async getCustomerDashboard(@CurrentUser('id') userId: number) {
+    return this.customersService.getCustomerDashboard(userId);
+  }
+
+  /**
+   * Get job details
+   */
+  @Get('jobs/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get job details by ID' })
+  @ApiResponse({ status: 200, description: 'Job retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async getCustomerJobDetails(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+  ) {
+    return this.customersService.getCustomerJobDetails(userId, jobId);
+  }
+
+  /**
+   * Perform job action (approve edits, close deal, cancel)
+   */
+  @Post('jobs/:id/action')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Perform action on job (approve edits, close deal, cancel)' })
+  @ApiResponse({ status: 200, description: 'Action completed successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid action or status' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async performJobAction(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+    @Body() dto: JobActionDto,
+  ) {
+    return this.customersService.performJobAction(userId, jobId, dto);
+  }
+
+  /**
+   * Submit feedback for a job
+   */
+  @Post('jobs/:id/feedback')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Submit feedback for a completed job' })
+  @ApiResponse({ status: 200, description: 'Feedback submitted successfully' })
+  @ApiResponse({ status: 400, description: 'Job not paid or feedback already exists' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async submitFeedback(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+    @Body() dto: SubmitFeedbackDto,
+  ) {
+    return this.customersService.submitFeedback(userId, jobId, dto);
+  }
+
+  /**
+   * Get jobs pending feedback
+   */
+  @Get('pending-feedback')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get jobs that need feedback' })
+  @ApiResponse({ status: 200, description: 'Pending feedback jobs retrieved successfully' })
+  async getPendingFeedback(@CurrentUser('id') userId: number) {
+    return this.customersService.getPendingFeedback(userId);
+  }
+
+  /**
+   * File a dispute
+   */
+  @Post('disputes')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'File a dispute for a job' })
+  @ApiResponse({ status: 201, description: 'Dispute filed successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid job status for dispute' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async fileDispute(
+    @CurrentUser('id') userId: number,
+    @Body() dto: FileDisputeDto,
+  ) {
+    return this.customersService.fileDispute(userId, dto);
+  }
+
+  /**
+   * Get customer profile
+   */
+  @Get('profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer profile' })
+  @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
+  async getCustomerProfile(@CurrentUser('id') userId: number) {
+    return this.customersService.getCustomerProfile(userId);
+  }
+
+  /**
+   * Update customer profile
+   */
+  @Put('profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update customer profile' })
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  async updateCustomerProfile(
+    @CurrentUser('id') userId: number,
+    @Body() dto: UpdateCustomerProfileDto,
+  ) {
+    return this.customersService.updateCustomerProfile(userId, dto);
   }
 }

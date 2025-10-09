@@ -2,7 +2,11 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Body,
+  Param,
+  Query,
+  ParseIntPipe,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -16,6 +20,9 @@ import {
 import { ProvidersService } from './providers.service';
 import { RequestServiceDto } from './dto/request-service.dto';
 import { AddServiceDto } from './dto/add-service.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { SetAvailabilityDto } from './dto/set-availability.dto';
+import { UpdateJobStatusDto } from './dto/update-job-status.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -74,5 +81,136 @@ export class ProvidersController {
     @Body() dto: AddServiceDto,
   ) {
     return this.providersService.addService(userId, dto);
+  }
+
+  // ==================== DASHBOARD ====================
+
+  /**
+   * Get provider dashboard
+   */
+  @Get('dashboard')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get provider dashboard with statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard retrieved successfully' })
+  async getDashboard(@CurrentUser('id') userId: number) {
+    return this.providersService.getDashboard(userId);
+  }
+
+  // ==================== PROFILE MANAGEMENT ====================
+
+  /**
+   * Get provider profile
+   */
+  @Get('profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get provider profile' })
+  @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
+  async getProfile(@CurrentUser('id') userId: number) {
+    return this.providersService.getProfile(userId);
+  }
+
+  /**
+   * Update provider profile
+   */
+  @Put('profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update provider profile and service areas' })
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  async updateProfile(
+    @CurrentUser('id') userId: number,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.providersService.updateProfile(userId, dto);
+  }
+
+  /**
+   * Set availability (active/inactive)
+   */
+  @Post('availability')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set provider availability status' })
+  @ApiResponse({ status: 200, description: 'Availability updated successfully' })
+  @ApiResponse({ status: 400, description: 'Active jobs exist, cannot deactivate' })
+  async setAvailability(
+    @CurrentUser('id') userId: number,
+    @Body() dto: SetAvailabilityDto,
+  ) {
+    return this.providersService.setAvailability(userId, dto);
+  }
+
+  // ==================== JOB MANAGEMENT ====================
+
+  /**
+   * Get job details
+   */
+  @Get('jobs/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get job details by ID' })
+  @ApiResponse({ status: 200, description: 'Job retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async getJobDetails(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+  ) {
+    return this.providersService.getJobDetails(userId, jobId);
+  }
+
+  /**
+   * Update job status (mark complete or mark payment)
+   */
+  @Post('jobs/:id/update-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark job as complete or mark payment received' })
+  @ApiResponse({ status: 200, description: 'Job status updated successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid action or status' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async updateJobStatus(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+    @Body() dto: UpdateJobStatusDto,
+  ) {
+    return this.providersService.updateJobStatus(userId, jobId, dto);
+  }
+
+  /**
+   * Get jobs with filters (enhanced - replaces pending-jobs and jobs)
+   */
+  @Get('jobs')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all jobs with filters' })
+  @ApiResponse({ status: 200, description: 'Jobs retrieved successfully' })
+  async getJobs(
+    @CurrentUser('id') userId: number,
+    @Query('status') status?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.providersService.getJobs(userId, {
+      status,
+      fromDate,
+      toDate,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
   }
 }

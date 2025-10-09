@@ -64,7 +64,12 @@ export class JobsService {
       );
     }
 
-    // Create job, chat, and initial message in a transaction
+    // Check if customer is banned
+    if (customer.status === 'banned') {
+      throw new ForbiddenException('Your account is suspended. Contact support.');
+    }
+
+    // Create job, payment, chat, and initial message in a transaction
     return await this.prisma.$transaction(async (tx) => {
       // 1. Create job
       const job = await tx.jobs.create({
@@ -80,7 +85,16 @@ export class JobsService {
         },
       });
 
-      // 2. Create chat
+      // 2. Create payment record
+      await tx.payments.create({
+        data: {
+          job_id: job.id,
+          amount: 0, // Will be set when job is confirmed/negotiated
+          status: 'pending',
+        },
+      });
+
+      // 3. Create chat
       const chat = await tx.chat.create({
         data: {
           job_id: job.id,
@@ -90,7 +104,7 @@ export class JobsService {
         },
       });
 
-      // 3. Create initial message with job details
+      // 4. Create initial message with job details
       const initialMessage = await tx.messages.create({
         data: {
           chat_id: chat.id,
@@ -101,7 +115,7 @@ export class JobsService {
         },
       });
 
-      // 4. Create notification for provider
+      // 5. Create notification for provider
       await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
@@ -279,10 +293,37 @@ export class JobsService {
           status: 'new',
           response_deadline: new Date(Date.now() + 60 * 60 * 1000),
           rejection_reason: null,
+          sp_accepted: false, // Reset acceptance
         },
       });
 
-      // 3. Create new chat
+      // 2b. Reset payment if exists (or create if doesn't)
+      const existingPayment = await tx.payments.findUnique({
+        where: { job_id: jobId },
+      });
+
+      if (existingPayment) {
+        await tx.payments.update({
+          where: { job_id: jobId },
+          data: {
+            status: 'pending',
+            marked_by: null,
+            marked_at: null,
+            method: null,
+            notes: null,
+          },
+        });
+      } else {
+        await tx.payments.create({
+          data: {
+            job_id: jobId,
+            amount: 0,
+            status: 'pending',
+          },
+        });
+      }
+
+      // 4. Create new chat
       const newChat = await tx.chat.create({
         data: {
           job_id: jobId,
@@ -292,7 +333,7 @@ export class JobsService {
         },
       });
 
-      // 4. Create initial message
+      // 5. Create initial message
       await tx.messages.create({
         data: {
           chat_id: newChat.id,
@@ -310,7 +351,7 @@ export class JobsService {
         },
       });
 
-      // 5. Notify new provider
+      // 6. Notify new provider
       await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
@@ -485,14 +526,19 @@ export class JobsService {
       throw new BadRequestException('Rejection reason is required');
     }
 
+    if (dto.action === JobResponseAction.NEGOTIATE && !dto.negotiation) {
+      throw new BadRequestException('Negotiation details are required');
+    }
+
     // Handle response in transaction
     return await this.prisma.$transaction(async (tx) => {
       if (dto.action === JobResponseAction.ACCEPT) {
-        // Accept: Update job status to in_progress
+        // Accept: SP accepted, job stays 'new' (customer closes deal later)
         const updatedJob = await tx.jobs.update({
           where: { id: jobId },
           data: {
-            status: 'in_progress',
+            sp_accepted: true, // Mark SP accepted
+            // status stays 'new' - customer closes deal later
           },
         });
 
@@ -503,7 +549,7 @@ export class JobsService {
             recipient_id: job.customer.user.id,
             type: 'job',
             title: 'Job Accepted',
-            message: `Your ${job.service.name} request has been accepted`,
+            message: `Your ${job.service.name} request has been accepted. You can now close the deal to start the job.`,
           },
         });
 
@@ -515,7 +561,7 @@ export class JobsService {
               sender_type: 'service_provider',
               sender_id: userId,
               message_type: 'text',
-              message: '✅ I have accepted your request. Let me know if you have any questions!',
+              message: '✅ I have accepted your request. Please review and close the deal to proceed!',
             },
           });
         }
@@ -523,8 +569,82 @@ export class JobsService {
         return {
           jobId: updatedJob.id,
           status: updatedJob.status,
+          spAccepted: true,
           action: 'accepted',
-          message: 'Job accepted successfully',
+          message: 'Job accepted successfully. Waiting for customer to close deal.',
+        };
+      } else if (dto.action === JobResponseAction.NEGOTIATE) {
+        // Negotiate: SP proposes changes, customer must approve
+        const negotiation = dto.negotiation!;
+
+        // Build edited answers object
+        const editedAnswers: any = {};
+        if (negotiation.editedAnswers) {
+          editedAnswers.answers = negotiation.editedAnswers;
+        }
+        if (negotiation.editedPrice !== undefined) {
+          editedAnswers.price = negotiation.editedPrice;
+        }
+        if (negotiation.editedSchedule) {
+          editedAnswers.schedule = negotiation.editedSchedule;
+        }
+        editedAnswers.notes = negotiation.notes;
+        editedAnswers.proposedAt = new Date().toISOString();
+
+        const updatedJob = await tx.jobs.update({
+          where: { id: jobId },
+          data: {
+            edited_answers: editedAnswers,
+            pending_approval: true,
+            // status stays 'new'
+          },
+        });
+
+        // Notify customer
+        await tx.notifications.create({
+          data: {
+            recipient_type: 'customer',
+            recipient_id: job.customer.user.id,
+            type: 'job',
+            title: 'Service Provider Proposed Changes',
+            message: `${provider.business_name || 'Service provider'} proposed changes to your ${job.service.name} request. Please review.`,
+          },
+        });
+
+        // Add message to chat showing proposed changes
+        if (job.chats.length > 0) {
+          let changesMessage = '💡 I propose the following changes:\n\n';
+          if (negotiation.editedPrice) {
+            changesMessage += `💰 New Price: $${negotiation.editedPrice}\n`;
+          }
+          if (negotiation.editedSchedule) {
+            changesMessage += `📅 New Schedule: ${negotiation.editedSchedule}\n`;
+          }
+          if (negotiation.editedAnswers && Object.keys(negotiation.editedAnswers).length > 0) {
+            changesMessage += `📝 Updated Details:\n`;
+            Object.entries(negotiation.editedAnswers).forEach(([key, value]) => {
+              changesMessage += `  • ${key}: ${value}\n`;
+            });
+          }
+          changesMessage += `\n💬 ${negotiation.notes}`;
+
+          await tx.messages.create({
+            data: {
+              chat_id: job.chats[0].id,
+              sender_type: 'service_provider',
+              sender_id: userId,
+              message_type: 'text',
+              message: changesMessage,
+            },
+          });
+        }
+
+        return {
+          jobId: updatedJob.id,
+          status: updatedJob.status,
+          pendingApproval: true,
+          action: 'negotiated',
+          message: 'Changes proposed successfully. Waiting for customer approval.',
         };
       } else {
         // Reject: Update job status and delete chat

@@ -3,10 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RequestServiceDto } from './dto/request-service.dto';
 import { AddServiceDto } from './dto/add-service.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { SetAvailabilityDto } from './dto/set-availability.dto';
+import { UpdateJobStatusDto, JobStatusAction } from './dto/update-job-status.dto';
 
 @Injectable()
 export class ProvidersService {
@@ -173,6 +177,720 @@ export class ProvidersService {
       serviceId: providerService.service_id,
       serviceName: service.name,
       category: service.category,
+    };
+  }
+
+  // ==================== DASHBOARD ====================
+
+  /**
+   * Get provider dashboard overview
+   */
+  async getDashboard(userId: number) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Execute all queries in parallel
+    const [jobStats, earnings, recentFeedback, recentJobs] = await Promise.all([
+      // Job statistics
+      this.prisma.jobs.groupBy({
+        by: ['status'],
+        where: { provider_id: provider.id },
+        _count: true,
+      }),
+
+      // Earnings (from payment table)
+      this.prisma.payments.aggregate({
+        where: {
+          job: { provider_id: provider.id },
+          status: 'received',
+        },
+        _sum: { amount: true },
+      }),
+
+      // Recent feedback
+      this.prisma.ratings_feedback.findMany({
+        where: { provider_id: provider.id },
+        include: {
+          customer: {
+            select: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        take: 5,
+      }),
+
+      // Recent jobs
+      this.prisma.jobs.findMany({
+        where: { provider_id: provider.id },
+        include: {
+          service: {
+            select: {
+              name: true,
+            },
+          },
+          customer: {
+            select: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        take: 5,
+      }),
+    ]);
+
+    // Process job stats
+    const jobCounts = {
+      new: 0,
+      in_progress: 0,
+      completed: 0,
+      paid: 0,
+      cancelled: 0,
+      rejected_by_sp: 0,
+    };
+
+    jobStats.forEach((stat) => {
+      jobCounts[stat.status] = stat._count;
+    });
+
+    const totalJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
+    const totalEarnings = earnings._sum.amount ? Number(earnings._sum.amount) : 0;
+
+    // Calculate average rating
+    const averageRating =
+      recentFeedback.length > 0
+        ? recentFeedback.reduce((sum, f) => sum + (f.rating || 0), 0) /
+          recentFeedback.length
+        : Number(provider.rating);
+
+    return {
+      summary: {
+        totalJobs,
+        totalEarnings,
+        averageRating: Number(averageRating.toFixed(2)),
+        warnings: provider.warnings,
+      },
+      jobs: jobCounts,
+      pendingActions: {
+        newJobRequests: jobCounts.new,
+        jobsToComplete: jobCounts.in_progress,
+        paymentsToMark: jobCounts.completed,
+      },
+      recentJobs: recentJobs.map((job) => ({
+        id: job.id,
+        service: job.service.name,
+        customer: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
+        status: job.status,
+        price: Number(job.price),
+        createdAt: job.created_at,
+      })),
+      recentFeedback: recentFeedback.map((feedback) => ({
+        id: feedback.id,
+        rating: feedback.rating,
+        feedback: feedback.feedback,
+        customer: `${feedback.customer.user.first_name} ${feedback.customer.user.last_name}`,
+        createdAt: feedback.created_at,
+      })),
+    };
+  }
+
+  // ==================== PROFILE MANAGEMENT ====================
+
+  /**
+   * Get provider profile
+   */
+  async getProfile(userId: number) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true,
+            phone_number: true,
+          },
+        },
+        provider_services: {
+          where: { is_active: true },
+          include: {
+            service: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+              },
+            },
+          },
+        },
+        service_areas: {
+          orderBy: { is_primary: 'desc' },
+        },
+        documents: {
+          select: {
+            id: true,
+            file_name: true,
+            status: true,
+            verified_at: true,
+            created_at: true,
+          },
+        },
+        jobs: {
+          where: {
+            status: { in: ['new', 'in_progress'] },
+          },
+          select: {
+            id: true,
+            service: {
+              select: {
+                name: true,
+              },
+            },
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    const totalDocs = provider.documents.length;
+    const verifiedDocs = provider.documents.filter((d) => d.status === 'verified').length;
+    const pendingDocs = provider.documents.filter((d) => d.status === 'pending').length;
+    const canDeactivate = provider.jobs.length === 0; // No active jobs
+
+    return {
+      user: {
+        name: `${provider.user.first_name} ${provider.user.last_name}`,
+        email: provider.user.email,
+        phone: provider.user.phone_number,
+      },
+      business: {
+        businessName: provider.business_name,
+        description: provider.description,
+        location: provider.location,
+        zipcode: provider.zipcode,
+        minPrice: provider.min_price ? Number(provider.min_price) : null,
+        maxPrice: provider.max_price ? Number(provider.max_price) : null,
+        experience: provider.experience,
+        experienceLevel: provider.experience_level,
+      },
+      status: {
+        current: provider.status,
+        canDeactivate,
+        activeJobsCount: provider.jobs.length,
+        warnings: provider.warnings,
+      },
+      services: provider.provider_services.map((ps) => ({
+        id: ps.service.id,
+        name: ps.service.name,
+        category: ps.service.category,
+      })),
+      serviceAreas: provider.service_areas.map((area) => ({
+        zipcode: area.zipcode,
+        isPrimary: area.is_primary,
+      })),
+      documents: {
+        total: totalDocs,
+        verified: verifiedDocs,
+        pending: pendingDocs,
+        list: provider.documents.map((doc) => ({
+          id: doc.id,
+          fileName: doc.file_name,
+          status: doc.status,
+          verifiedAt: doc.verified_at,
+          uploadedAt: doc.created_at,
+        })),
+      },
+      statistics: {
+        totalJobs: provider.total_jobs,
+        earnings: Number(provider.earning),
+        rating: Number(provider.rating),
+      },
+    };
+  }
+
+  /**
+   * Update provider profile
+   */
+  async updateProfile(userId: number, dto: UpdateProfileDto) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      // Prepare update data
+      const updateData: any = {};
+      if (dto.businessName !== undefined) updateData.business_name = dto.businessName;
+      if (dto.description !== undefined) updateData.description = dto.description;
+      if (dto.location !== undefined) updateData.location = dto.location;
+      if (dto.minPrice !== undefined) updateData.min_price = dto.minPrice;
+      if (dto.maxPrice !== undefined) updateData.maxPrice = dto.maxPrice;
+      if (dto.experience !== undefined) updateData.experience = dto.experience;
+
+      // Update provider
+      if (Object.keys(updateData).length > 0) {
+        await tx.service_providers.update({
+          where: { id: provider.id },
+          data: updateData,
+        });
+      }
+
+      // Update service areas if provided
+      if (dto.serviceAreas && dto.serviceAreas.length > 0) {
+        // Delete existing areas
+        await tx.provider_service_areas.deleteMany({
+          where: { provider_id: provider.id },
+        });
+
+        // Create new areas
+        await tx.provider_service_areas.createMany({
+          data: dto.serviceAreas.map((zipcode, index) => ({
+            provider_id: provider.id,
+            zipcode,
+            is_primary: index === 0, // First one is primary
+          })),
+        });
+      }
+
+      return {
+        message: 'Profile updated successfully',
+      };
+    });
+  }
+
+  /**
+   * Set provider availability (active/inactive)
+   */
+  async setAvailability(userId: number, dto: SetAvailabilityDto) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+      include: {
+        jobs: {
+          where: {
+            status: { in: ['new', 'in_progress'] },
+          },
+          select: {
+            id: true,
+            service: {
+              select: {
+                name: true,
+              },
+            },
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    if (dto.status === provider.status) {
+      throw new BadRequestException(`You are already ${dto.status}`);
+    }
+
+    // Check active jobs if trying to go inactive
+    if (dto.status === 'inactive' && provider.jobs.length > 0) {
+      const jobList = provider.jobs
+        .map((j) => `#${j.id} (${j.service.name} - ${j.status})`)
+        .join(', ');
+
+      throw new BadRequestException(
+        `You have ${provider.jobs.length} active job(s): ${jobList}. Please complete them before deactivating your account.`,
+      );
+    }
+
+    await this.prisma.service_providers.update({
+      where: { id: provider.id },
+      data: { status: dto.status },
+    });
+
+    return {
+      status: dto.status,
+      message: `Account set to ${dto.status} successfully`,
+    };
+  }
+
+  // ==================== JOB MANAGEMENT ====================
+
+  /**
+   * Get job details
+   */
+  async getJobDetails(userId: number, jobId: number) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: jobId },
+      include: {
+        service: {
+          select: {
+            name: true,
+            category: true,
+            questions_json: true,
+          },
+        },
+        customer: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                phone_number: true,
+              },
+            },
+          },
+        },
+        chats: {
+          select: {
+            id: true,
+          },
+        },
+        payment: true,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.provider_id !== provider.id) {
+      throw new ForbiddenException('You can only view your own jobs');
+    }
+
+    const canMarkComplete = job.status === 'in_progress';
+    const canMarkPayment = job.status === 'completed';
+
+    return {
+      job: {
+        id: job.id,
+        service: job.service.name,
+        category: job.service.category,
+        status: job.status,
+        price: Number(job.price),
+        originalAnswers: job.answers_json,
+        editedAnswers: job.edited_answers,
+        spAccepted: job.sp_accepted,
+        pendingApproval: job.pending_approval,
+        location: job.location,
+        scheduledAt: job.scheduled_at,
+        completedAt: job.completed_at,
+        paidAt: job.paid_at,
+        responseDeadline: job.response_deadline,
+        createdAt: job.created_at,
+      },
+      customer: {
+        name: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
+        phone: job.customer.user.phone_number,
+        address: job.customer.address,
+      },
+      payment: job.payment
+        ? {
+            amount: Number(job.payment.amount),
+            method: job.payment.method,
+            status: job.payment.status,
+            markedAt: job.payment.marked_at,
+            notes: job.payment.notes,
+          }
+        : null,
+      chatId: job.chats.length > 0 ? job.chats[0].id : null,
+      actions: {
+        canMarkComplete,
+        canMarkPayment,
+      },
+    };
+  }
+
+  /**
+   * Update job status (mark complete or mark payment)
+   */
+  async updateJobStatus(userId: number, jobId: number, dto: UpdateJobStatusDto) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: jobId },
+      include: {
+        service: true,
+        customer: {
+          include: { user: true },
+        },
+        payment: true,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.provider_id !== provider.id) {
+      throw new ForbiddenException('You can only update your own jobs');
+    }
+
+    if (dto.action === JobStatusAction.MARK_COMPLETE) {
+      // Mark job as completed
+      if (job.status !== 'in_progress') {
+        throw new BadRequestException('Only in-progress jobs can be marked as complete');
+      }
+
+      return await this.prisma.$transaction(async (tx) => {
+        // Update job
+        const updatedJob = await tx.jobs.update({
+          where: { id: jobId },
+          data: {
+            status: 'completed',
+            completed_at: new Date(),
+          },
+        });
+
+        // Update payment amount (finalize price)
+        if (job.payment) {
+          await tx.payments.update({
+            where: { job_id: jobId },
+            data: {
+              amount: job.price,
+              status: 'pending', // Awaiting payment
+            },
+          });
+        }
+
+        // Notify customer
+        await tx.notifications.create({
+          data: {
+            recipient_type: 'customer',
+            recipient_id: job.customer.user_id,
+            type: 'job',
+            title: 'Job Completed',
+            message: `Your ${job.service.name} job has been marked complete. Please make payment.`,
+          },
+        });
+
+        return {
+          jobId: updatedJob.id,
+          status: updatedJob.status,
+          completedAt: updatedJob.completed_at,
+          message: 'Job marked as complete successfully',
+        };
+      });
+    } else if (dto.action === JobStatusAction.MARK_PAYMENT) {
+      // Mark payment as received
+      if (job.status !== 'completed') {
+        throw new BadRequestException('Only completed jobs can have payment marked');
+      }
+
+      if (!dto.paymentDetails) {
+        throw new BadRequestException('Payment details are required');
+      }
+
+      if (!job.payment) {
+        throw new NotFoundException('Payment record not found for this job');
+      }
+
+      return await this.prisma.$transaction(async (tx) => {
+        // Update payment
+        const updatedPayment = await tx.payments.update({
+          where: { job_id: jobId },
+          data: {
+            status: 'received',
+            method: dto.paymentDetails!.method,
+            notes: dto.paymentDetails!.notes,
+            marked_by: userId,
+            marked_at: new Date(),
+          },
+        });
+
+        // Update job
+        await tx.jobs.update({
+          where: { id: jobId },
+          data: {
+            status: 'paid',
+            paid_at: new Date(),
+          },
+        });
+
+        // Update provider earnings and job count
+        await tx.service_providers.update({
+          where: { id: provider.id },
+          data: {
+            earning: { increment: job.price },
+            total_jobs: { increment: 1 },
+          },
+        });
+
+        // Notify customer
+        await tx.notifications.create({
+          data: {
+            recipient_type: 'customer',
+            recipient_id: job.customer.user_id,
+            type: 'payment',
+            title: 'Payment Confirmed',
+            message: `Payment of $${Number(job.price).toFixed(2)} confirmed for job #${job.id} (${job.service.name}).`,
+          },
+        });
+
+        // Notify provider
+        await tx.notifications.create({
+          data: {
+            recipient_type: 'service_provider',
+            recipient_id: provider.user_id,
+            type: 'payment',
+            title: 'Payment Recorded',
+            message: `Payment of $${Number(job.price).toFixed(2)} recorded for job #${job.id}.`,
+          },
+        });
+
+        return {
+          jobId: job.id,
+          status: 'paid',
+          paymentAmount: Number(updatedPayment.amount),
+          paymentMethod: updatedPayment.method,
+          markedAt: updatedPayment.marked_at,
+          message: 'Payment marked as received successfully',
+        };
+      });
+    }
+
+    throw new BadRequestException('Invalid action');
+  }
+
+  /**
+   * Get jobs with filters
+   */
+  async getJobs(
+    userId: number,
+    filters: {
+      status?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    const { status, fromDate, toDate, page = 1, limit = 20 } = filters;
+    const finalLimit = Math.min(limit, 100);
+
+    const where: any = {
+      provider_id: provider.id,
+    };
+
+    // Status filter (comma-separated statuses)
+    if (status) {
+      const statuses = status.split(',');
+      where.status = { in: statuses };
+    }
+
+    // Date range filter
+    if (fromDate || toDate) {
+      where.created_at = {};
+      if (fromDate) {
+        where.created_at.gte = new Date(fromDate);
+      }
+      if (toDate) {
+        const endDate = new Date(toDate);
+        endDate.setHours(23, 59, 59, 999);
+        where.created_at.lte = endDate;
+      }
+    }
+
+    const total = await this.prisma.jobs.count({ where });
+
+    const jobs = await this.prisma.jobs.findMany({
+      where,
+      include: {
+        service: {
+          select: {
+            name: true,
+            category: true,
+          },
+        },
+        customer: {
+          select: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                phone_number: true,
+              },
+            },
+          },
+        },
+        payment: {
+          select: {
+            status: true,
+            amount: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      skip: (page - 1) * finalLimit,
+      take: finalLimit,
+    });
+
+    return {
+      data: jobs.map((job) => ({
+        id: job.id,
+        service: job.service.name,
+        category: job.service.category,
+        customer: {
+          name: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
+          phone: job.customer.user.phone_number,
+        },
+        status: job.status,
+        price: Number(job.price),
+        paymentStatus: job.payment?.status || 'pending',
+        scheduledAt: job.scheduled_at,
+        completedAt: job.completed_at,
+        createdAt: job.created_at,
+      })),
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
     };
   }
 }
