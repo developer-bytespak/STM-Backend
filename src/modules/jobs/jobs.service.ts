@@ -69,8 +69,34 @@ export class JobsService {
       throw new ForbiddenException('Your account is suspended. Contact support.');
     }
 
+    // Check if customer has any unpaid jobs
+    const unpaidJob = await this.prisma.jobs.findFirst({
+      where: {
+        customer_id: customer.id,
+        status: { in: ['new', 'in_progress', 'completed'] },
+      },
+      include: {
+        service: { select: { name: true } },
+      },
+    });
+
+    if (unpaidJob) {
+      throw new BadRequestException(
+        `You have an unpaid job (#${unpaidJob.id} - ${unpaidJob.service.name}). Please complete payment before booking a new service.`,
+      );
+    }
+
     // Create job, payment, chat, and initial message in a transaction
     return await this.prisma.$transaction(async (tx) => {
+      // Prepare answers with in-person visit info if requested
+      const jobAnswers = {
+        ...dto.answers,
+        ...(dto.requiresInPersonVisit && {
+          in_person_visit_requested: true,
+          in_person_visit_cost: dto.inPersonVisitCost || 50, // Default $50 if not specified
+        }),
+      };
+
       // 1. Create job
       const job = await tx.jobs.create({
         data: {
@@ -79,7 +105,7 @@ export class JobsService {
           service_id: dto.serviceId,
           status: 'new',
           location: dto.location,
-          answers_json: dto.answers,
+          answers_json: jobAnswers,
           scheduled_at: dto.preferredDate ? new Date(dto.preferredDate) : null,
           response_deadline: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
         },
@@ -155,6 +181,12 @@ export class JobsService {
     
     if (dto.preferredDate) {
       message += `📅 Preferred Date: ${dto.preferredDate}\n`;
+    }
+
+    // Highlight in-person visit request
+    if (dto.requiresInPersonVisit) {
+      const visitCost = dto.inPersonVisitCost || 50;
+      message += `🏠 In-Person Visit Requested (Additional Cost: $${visitCost})\n`;
     }
 
     if (dto.answers && Object.keys(dto.answers).length > 0) {

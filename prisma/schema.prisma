@@ -420,3 +420,17 @@ enum PaymentStatus {
   received
   disputed
 }
+
+model platform_settings {
+  id                           Int      @id @default(autoincrement())
+  response_deadline_mins       Int      @default(60)
+  warning_threshold            Int      @default(3)
+  popularity_threshold         Int      @default(10)
+  cancellation_fee_percentage  Decimal  @default(25) @db.Decimal(5, 2)
+  default_in_person_visit_cost Decimal  @default(50.00) @db.Decimal(10, 2)
+  updated_by                   Int
+  updated_at                   DateTime @updatedAt
+  created_at                   DateTime @default(now())
+
+  @@index([created_at])
+}

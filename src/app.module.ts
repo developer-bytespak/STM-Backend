@@ -1,9 +1,11 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { JobTimeoutService } from './modules/shared/services/job-timeout.service';
 
 // Import all modules
 import { OAuthModule } from './modules/oauth/oauth.module';
@@ -33,6 +35,7 @@ import { AdminModule } from './modules/admin/admin.module';
         limit: 100, // 100 requests per minute
       },
     ]),
+    ScheduleModule.forRoot(), // Enable cron jobs
     // Core modules
     OAuthModule,
     UsersModule,
@@ -51,6 +54,6 @@ import { AdminModule } from './modules/admin/admin.module';
     AdminModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PrismaService, Logger],
+  providers: [AppService, PrismaService, Logger, JobTimeoutService],
 })
 export class AppModule {}

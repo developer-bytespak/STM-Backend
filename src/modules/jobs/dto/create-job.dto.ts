@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsObject, IsString, IsOptional, IsDateString } from 'class-validator';
+import { IsNumber, IsObject, IsString, IsOptional, IsDateString, IsBoolean } from 'class-validator';
 
 export class CreateJobDto {
   @ApiProperty({
@@ -44,4 +44,20 @@ export class CreateJobDto {
   @IsDateString()
   @IsOptional()
   preferredDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Request in-person visit (additional cost applies)',
+    example: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  requiresInPersonVisit?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Additional cost for in-person visit (if requested)',
+    example: 50.00,
+  })
+  @IsNumber()
+  @IsOptional()
+  inPersonVisitCost?: number;
 }

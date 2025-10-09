@@ -714,6 +714,12 @@ export class CustomersService {
         throw new BadRequestException('Cancellation reason is required');
       }
 
+      // Calculate cancellation fee based on lead time
+      const cancellationResult = this.calculateCancellationFee(
+        job.scheduled_at,
+        Number(job.price),
+      );
+
       return await this.prisma.$transaction(async (tx) => {
         await tx.jobs.update({
           where: { id: jobId },
@@ -723,17 +729,34 @@ export class CustomersService {
           },
         });
 
+        // If there's a cancellation fee, update the payment record
+        if (cancellationResult.fee > 0) {
+          await tx.payments.update({
+            where: { job_id: jobId },
+            data: {
+              amount: cancellationResult.fee,
+              method: 'cancellation_fee',
+              notes: cancellationResult.message,
+              status: 'pending', // Customer must pay cancellation fee
+            },
+          });
+        }
+
         await tx.notifications.create({
           data: {
             recipient_type: 'service_provider',
             recipient_id: job.service_provider.user_id,
             type: 'job',
             title: 'Job Cancelled',
-            message: `Customer cancelled job #${job.id}. Reason: ${dto.cancellationReason}`,
+            message: `Customer cancelled job #${job.id}. Reason: ${dto.cancellationReason}${cancellationResult.fee > 0 ? `. Cancellation fee: $${cancellationResult.fee}` : ''}`,
           },
         });
 
-        return { message: 'Job cancelled successfully' };
+        return {
+          message: cancellationResult.message,
+          cancellationFee: cancellationResult.fee,
+          canReschedule: cancellationResult.canReschedule,
+        };
       });
     }
 
@@ -1032,5 +1055,140 @@ export class CustomersService {
 
       return { message: 'Profile updated successfully' };
     });
+  }
+
+  /**
+   * Request a new service (when search returns no results)
+   */
+  async requestNewService(userId: number, dto: any) {
+    const customer = await this.prisma.customers.findUnique({
+      where: { user_id: userId },
+      include: {
+        user: { select: { email: true, first_name: true, last_name: true } },
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer profile not found');
+    }
+
+    // Create service request record
+    const serviceRequest = await this.prisma.service_requests.create({
+      data: {
+        keyword: dto.keyword,
+        description: dto.description,
+        region: dto.region,
+        zipcode: dto.zipcode,
+        category: 'Customer Request', // Default category
+        service_name: dto.keyword,
+        email_sent: false,
+        reviewed: false,
+        provider_id: 1, // Dummy provider (will be updated when LSM assigns)
+        customersId: customer.id,
+      },
+    });
+
+    // Notify LSM in the region
+    // Find LSM for the region
+    const lsm = await this.prisma.local_service_managers.findFirst({
+      where: { region: dto.region },
+      include: { user: { select: { id: true } } },
+    });
+
+    if (lsm) {
+      await this.prisma.notifications.create({
+        data: {
+          recipient_type: 'local_service_manager',
+          recipient_id: lsm.user.id,
+          type: 'system',
+          title: 'New Service Request from Customer',
+          message: `Customer ${customer.user.first_name} ${customer.user.last_name} requested: "${dto.keyword}" in ${dto.region}`,
+        },
+      });
+    }
+
+    // Also notify admin
+    const admins = await this.prisma.admin.findMany({
+      include: { user: { select: { id: true } } },
+    });
+
+    for (const admin of admins) {
+      await this.prisma.notifications.create({
+        data: {
+          recipient_type: 'admin',
+          recipient_id: admin.user.id,
+          type: 'system',
+          title: 'Customer Service Request',
+          message: `New service requested: "${dto.keyword}" in ${dto.region} (${dto.zipcode})`,
+        },
+      });
+    }
+
+    return {
+      message:
+        'Service request submitted successfully. We will notify you when this service becomes available.',
+      requestId: serviceRequest.id,
+    };
+  }
+
+  /**
+   * Calculate cancellation fee based on lead time
+   * Rules:
+   * 1. Cancel < 4 days before scheduled: 25% fee
+   * 2. Cancel >= 4 days but WITHIN 48 hrs before scheduled: 25% fee
+   * 3. Cancel >= 4 days and NOT within 48 hrs: can reschedule without fee (0% fee)
+   */
+  private calculateCancellationFee(
+    scheduledAt: Date,
+    jobPrice: number,
+  ): {
+    fee: number;
+    message: string;
+    canReschedule: boolean;
+  } {
+    if (!scheduledAt) {
+      // No scheduled date - no fee
+      return {
+        fee: 0,
+        message: 'Job cancelled successfully. No cancellation fee.',
+        canReschedule: false,
+      };
+    }
+
+    const now = new Date();
+    const scheduledTime = new Date(scheduledAt);
+    const hoursUntilJob = (scheduledTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const daysUntilJob = hoursUntilJob / 24;
+
+    const CANCELLATION_FEE_PERCENTAGE = 0.25; // 25% fee
+    const FOUR_DAYS_HOURS = 4 * 24; // 96 hours
+    const TWO_DAYS_HOURS = 2 * 24; // 48 hours
+
+    // Rule 1: Less than 4 days lead time - charge 25% fee
+    if (hoursUntilJob < FOUR_DAYS_HOURS) {
+      const fee = jobPrice * CANCELLATION_FEE_PERCENTAGE;
+      return {
+        fee: Math.round(fee * 100) / 100, // Round to 2 decimals
+        message: `Job cancelled with less than 4 days notice. Cancellation fee of ${CANCELLATION_FEE_PERCENTAGE * 100}% ($${fee.toFixed(2)}) applies.`,
+        canReschedule: false,
+      };
+    }
+
+    // Rule 2: 4+ days lead time but cancelling WITHIN 48 hours before scheduled - charge 25% fee
+    if (daysUntilJob >= 4 && hoursUntilJob < TWO_DAYS_HOURS) {
+      const fee = jobPrice * CANCELLATION_FEE_PERCENTAGE;
+      return {
+        fee: Math.round(fee * 100) / 100,
+        message: `Job cancelled within 48 hours of scheduled time. Cancellation fee of ${CANCELLATION_FEE_PERCENTAGE * 100}% ($${fee.toFixed(2)}) applies.`,
+        canReschedule: false,
+      };
+    }
+
+    // Rule 3: 4+ days lead time and NOT within 48 hours - can reschedule without fee
+    return {
+      fee: 0,
+      message: `Job cancelled successfully. You can reschedule without any fee (cancelled more than 48 hours before scheduled time with 4+ days lead time).`,
+      canReschedule: true,
+    };
   }
 }

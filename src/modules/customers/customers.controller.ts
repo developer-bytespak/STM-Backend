@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -25,6 +26,7 @@ import { JobActionDto } from './dto/job-action.dto';
 import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
 import { FileDisputeDto } from './dto/file-dispute.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
+import { RequestNewServiceDto } from './dto/request-new-service.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -262,5 +264,27 @@ export class CustomersController {
     @Body() dto: UpdateCustomerProfileDto,
   ) {
     return this.customersService.updateCustomerProfile(userId, dto);
+  }
+
+  /**
+   * Request a new service (when search returns no results)
+   */
+  @Post('request-service')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request a new service that is not currently available',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Service request submitted successfully',
+  })
+  async requestNewService(
+    @CurrentUser('id') userId: number,
+    @Body() dto: RequestNewServiceDto,
+  ) {
+    return this.customersService.requestNewService(userId, dto);
   }
 }

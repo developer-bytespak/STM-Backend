@@ -29,6 +29,7 @@ import {
   ApproveBanRequestDto,
   RejectBanRequestDto,
 } from './dto/reject-ban-request.dto';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -494,5 +495,30 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Regional reports retrieved successfully' })
   async getRegionalReports() {
     return this.adminService.getRegionalReports();
+  }
+
+  // ==================== PLATFORM SETTINGS ====================
+
+  /**
+   * Get platform settings
+   */
+  @Get('settings')
+  @ApiOperation({ summary: 'Get platform configuration settings' })
+  @ApiResponse({ status: 200, description: 'Settings retrieved successfully' })
+  async getSettings() {
+    return this.adminService.getSettings();
+  }
+
+  /**
+   * Update platform settings
+   */
+  @Put('settings')
+  @ApiOperation({ summary: 'Update platform configuration settings' })
+  @ApiResponse({ status: 200, description: 'Settings updated successfully' })
+  async updateSettings(
+    @CurrentUser('id') userId: number,
+    @Body() dto: UpdateSettingsDto,
+  ) {
+    return this.adminService.updateSettings(userId, dto);
   }
 }
