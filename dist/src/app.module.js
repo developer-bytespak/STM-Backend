@@ -10,9 +10,11 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const throttler_1 = require("@nestjs/throttler");
+const schedule_1 = require("@nestjs/schedule");
 const prisma_service_1 = require("../prisma/prisma.service");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
+const job_timeout_service_1 = require("./modules/shared/services/job-timeout.service");
 const oauth_module_1 = require("./modules/oauth/oauth.module");
 const users_module_1 = require("./modules/users/users.module");
 const customers_module_1 = require("./modules/customers/customers.module");
@@ -43,6 +45,7 @@ exports.AppModule = AppModule = __decorate([
                     limit: 100,
                 },
             ]),
+            schedule_1.ScheduleModule.forRoot(),
             oauth_module_1.OAuthModule,
             users_module_1.UsersModule,
             customers_module_1.CustomersModule,
@@ -60,7 +63,7 @@ exports.AppModule = AppModule = __decorate([
             admin_module_1.AdminModule,
         ],
         controllers: [app_controller_1.AppController],
-        providers: [app_service_1.AppService, prisma_service_1.PrismaService, common_1.Logger],
+        providers: [app_service_1.AppService, prisma_service_1.PrismaService, common_1.Logger, job_timeout_service_1.JobTimeoutService],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

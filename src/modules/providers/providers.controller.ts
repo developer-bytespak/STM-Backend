@@ -23,6 +23,7 @@ import { AddServiceDto } from './dto/add-service.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetAvailabilityDto } from './dto/set-availability.dto';
 import { UpdateJobStatusDto } from './dto/update-job-status.dto';
+import { ReviewFiltersDto } from './dto/review-filters.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -212,5 +213,62 @@ export class ProvidersController {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
     });
+  }
+
+  // ==================== REVIEW MANAGEMENT ====================
+
+  /**
+   * Get all reviews for current provider
+   */
+  @Get('reviews')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all reviews for current provider with filters' })
+  @ApiResponse({ status: 200, description: 'Reviews retrieved successfully' })
+  async getReviews(
+    @CurrentUser('id') userId: number,
+    @Query('minRating') minRating?: string,
+    @Query('maxRating') maxRating?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.providersService.getReviews(userId, {
+      minRating: minRating ? parseInt(minRating) : undefined,
+      maxRating: maxRating ? parseInt(maxRating) : undefined,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  /**
+   * Get review statistics
+   */
+  @Get('reviews/stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get review statistics and rating breakdown' })
+  @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
+  async getReviewStats(@CurrentUser('id') userId: number) {
+    return this.providersService.getReviewStats(userId);
+  }
+
+  /**
+   * Get specific review details
+   */
+  @Get('reviews/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get specific review details' })
+  @ApiResponse({ status: 200, description: 'Review retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Not your review' })
+  @ApiResponse({ status: 404, description: 'Review not found' })
+  async getReviewById(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) reviewId: number,
+  ) {
+    return this.providersService.getReviewById(userId, reviewId);
   }
 }

@@ -17,6 +17,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { LsmService } from './lsm.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { RejectServiceRequestDto } from './dto/reject-service-request.dto';
 import { DocumentActionDto } from './dto/document-action.dto';
 import { SetProviderStatusDto } from './dto/set-provider-status.dto';
@@ -34,7 +35,10 @@ import { UserRole } from '../users/enums/user-role.enum';
 @Roles(UserRole.LSM)
 @ApiBearerAuth()
 export class LsmController {
-  constructor(private readonly lsmService: LsmService) {}
+  constructor(
+    private readonly lsmService: LsmService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
    * Get pending service requests in region
@@ -316,5 +320,115 @@ export class LsmController {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
     });
+  }
+
+  // ==================== DEBUG ENDPOINT ====================
+
+  /**
+   * DEBUG: Get LSM info and all providers assigned
+   */
+  @Get('debug/info')
+  @ApiOperation({ summary: 'DEBUG: Get LSM info and assigned providers' })
+  @ApiResponse({ status: 200, description: 'Debug info retrieved' })
+  async getDebugInfo(@CurrentUser('id') userId: number) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: userId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!lsm) {
+      return { error: 'LSM profile not found' };
+    }
+
+    const allProviders = await this.prisma.service_providers.findMany({
+      where: { lsm_id: lsm.id },
+      select: {
+        id: true,
+        user_id: true,
+        business_name: true,
+        status: true,
+        location: true,
+        created_at: true,
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const pendingProviders = allProviders.filter((p) => p.status === 'pending');
+
+    return {
+      lsm: {
+        id: lsm.id,
+        user_id: lsm.user_id,
+        region: lsm.region,
+        status: lsm.status,
+      },
+      totalProvidersAssigned: allProviders.length,
+      pendingCount: pendingProviders.length,
+      allProviders: allProviders.map((p) => ({
+        id: p.id,
+        user_id: p.user_id,
+        name: `${p.user.first_name} ${p.user.last_name}`,
+        email: p.user.email,
+        businessName: p.business_name,
+        status: p.status,
+        location: p.location,
+        createdAt: p.created_at,
+      })),
+      pendingProviders: pendingProviders.map((p) => ({
+        id: p.id,
+        user_id: p.user_id,
+        name: `${p.user.first_name} ${p.user.last_name}`,
+        businessName: p.business_name,
+      })),
+    };
+  }
+
+  // ==================== REVIEW MANAGEMENT ====================
+
+  /**
+   * Get all reviews for a specific provider
+   */
+  @Get('providers/:id/reviews')
+  @ApiOperation({ summary: 'Get all reviews for a provider in your region' })
+  @ApiResponse({ status: 200, description: 'Reviews retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Provider not in your region' })
+  @ApiResponse({ status: 404, description: 'Provider not found' })
+  async getProviderReviews(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) providerId: number,
+    @Query('minRating') minRating?: string,
+    @Query('maxRating') maxRating?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.lsmService.getProviderReviews(userId, providerId, {
+      minRating: minRating ? parseInt(minRating) : undefined,
+      maxRating: maxRating ? parseInt(maxRating) : undefined,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  /**
+   * Get review statistics for a provider
+   */
+  @Get('providers/:id/reviews/stats')
+  @ApiOperation({ summary: 'Get review statistics for a provider' })
+  @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Provider not in your region' })
+  @ApiResponse({ status: 404, description: 'Provider not found' })
+  async getProviderReviewStats(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) providerId: number,
+  ) {
+    return this.lsmService.getProviderReviewStats(userId, providerId);
   }
 }

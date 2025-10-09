@@ -2860,4 +2860,362 @@ export class AdminService {
       },
     };
   }
+
+  // ==================== REVIEW MANAGEMENT ====================
+
+  /**
+   * Get all reviews across the platform (admin monitoring)
+   */
+  async getAllReviews(filters: {
+    providerId?: number;
+    customerId?: number;
+    region?: string;
+    minRating?: number;
+    maxRating?: number;
+    page?: number;
+    limit?: number;
+  }) {
+    const { providerId, customerId, region, minRating, maxRating, page = 1, limit = 20 } = filters;
+    const finalLimit = Math.min(limit, 100);
+
+    const where: any = {};
+
+    // Filter by provider
+    if (providerId) {
+      where.provider_id = providerId;
+    }
+
+    // Filter by customer
+    if (customerId) {
+      where.customer_id = customerId;
+    }
+
+    // Filter by region (via provider's LSM region)
+    if (region) {
+      where.provider = {
+        local_service_manager: {
+          region: { contains: region, mode: 'insensitive' },
+        },
+      };
+    }
+
+    // Filter by rating range
+    if (minRating !== undefined || maxRating !== undefined) {
+      where.rating = {};
+      if (minRating !== undefined) {
+        where.rating.gte = minRating;
+      }
+      if (maxRating !== undefined) {
+        where.rating.lte = maxRating;
+      }
+    }
+
+    const [total, reviews] = await Promise.all([
+      this.prisma.ratings_feedback.count({ where }),
+      this.prisma.ratings_feedback.findMany({
+        where,
+        include: {
+          customer: {
+            include: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          provider: {
+            include: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+              local_service_manager: {
+                select: {
+                  region: true,
+                },
+              },
+            },
+          },
+          job: {
+            select: {
+              id: true,
+              service: {
+                select: {
+                  name: true,
+                  category: true,
+                },
+              },
+              completed_at: true,
+              price: true,
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * finalLimit,
+        take: finalLimit,
+      }),
+    ]);
+
+    return {
+      data: reviews.map((review) => ({
+        id: review.id,
+        rating: review.rating,
+        feedback: review.feedback,
+        punctualityRating: review.punctuality_rating,
+        responseTime: review.response_time,
+        customer: {
+          id: review.customer.id,
+          name: `${review.customer.user.first_name} ${review.customer.user.last_name}`,
+          email: review.customer.user.email,
+        },
+        provider: {
+          id: review.provider.id,
+          businessName: review.provider.business_name,
+          ownerName: `${review.provider.user.first_name} ${review.provider.user.last_name}`,
+          region: review.provider.local_service_manager.region,
+        },
+        job: {
+          id: review.job.id,
+          service: review.job.service.name,
+          category: review.job.service.category,
+          completedAt: review.job.completed_at,
+          price: Number(review.job.price),
+        },
+        createdAt: review.created_at,
+      })),
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
+    };
+  }
+
+  /**
+   * Get platform-wide review statistics
+   */
+  async getReviewStats() {
+    const [totalReviews, reviews, providers] = await Promise.all([
+      this.prisma.ratings_feedback.count(),
+      this.prisma.ratings_feedback.findMany({
+        select: {
+          rating: true,
+          punctuality_rating: true,
+          response_time: true,
+        },
+      }),
+      this.prisma.service_providers.count({
+        where: { status: 'active' },
+      }),
+    ]);
+
+    if (totalReviews === 0) {
+      return {
+        totalReviews: 0,
+        totalProviders: providers,
+        averageRating: 0,
+        averagePunctuality: 0,
+        averageResponseTime: 0,
+        ratingBreakdown: {
+          5: 0,
+          4: 0,
+          3: 0,
+          2: 0,
+          1: 0,
+        },
+        percentages: {
+          5: 0,
+          4: 0,
+          3: 0,
+          2: 0,
+          1: 0,
+        },
+      };
+    }
+
+    // Calculate averages
+    const totalRating = reviews.reduce((sum, f) => sum + (f.rating || 0), 0);
+    const totalPunctuality = reviews.reduce((sum, f) => sum + (f.punctuality_rating || 0), 0);
+    const totalResponseTime = reviews.reduce((sum, f) => sum + (f.response_time || 0), 0);
+
+    const averageRating = totalRating / totalReviews;
+    const averagePunctuality = totalPunctuality / totalReviews;
+    const averageResponseTime = totalResponseTime / totalReviews;
+
+    // Rating breakdown
+    const ratingBreakdown = {
+      5: reviews.filter((f) => f.rating === 5).length,
+      4: reviews.filter((f) => f.rating === 4).length,
+      3: reviews.filter((f) => f.rating === 3).length,
+      2: reviews.filter((f) => f.rating === 2).length,
+      1: reviews.filter((f) => f.rating === 1).length,
+    };
+
+    return {
+      totalReviews,
+      totalProviders: providers,
+      averageRating: Number(averageRating.toFixed(2)),
+      averagePunctuality: Number(averagePunctuality.toFixed(2)),
+      averageResponseTime: Math.round(averageResponseTime),
+      ratingBreakdown,
+      percentages: {
+        5: Math.round((ratingBreakdown[5] / totalReviews) * 100),
+        4: Math.round((ratingBreakdown[4] / totalReviews) * 100),
+        3: Math.round((ratingBreakdown[3] / totalReviews) * 100),
+        2: Math.round((ratingBreakdown[2] / totalReviews) * 100),
+        1: Math.round((ratingBreakdown[1] / totalReviews) * 100),
+      },
+    };
+  }
+
+  /**
+   * Get specific review details (admin)
+   */
+  async getReviewById(reviewId: number) {
+    const review = await this.prisma.ratings_feedback.findUnique({
+      where: { id: reviewId },
+      include: {
+        customer: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                email: true,
+                phone_number: true,
+              },
+            },
+          },
+        },
+        provider: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                email: true,
+                phone_number: true,
+              },
+            },
+            local_service_manager: {
+              select: {
+                region: true,
+              },
+            },
+          },
+        },
+        job: {
+          select: {
+            id: true,
+            service: {
+              select: {
+                name: true,
+                category: true,
+              },
+            },
+            status: true,
+            completed_at: true,
+            price: true,
+          },
+        },
+      },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    return {
+      id: review.id,
+      rating: review.rating,
+      feedback: review.feedback,
+      punctualityRating: review.punctuality_rating,
+      responseTime: review.response_time,
+      customer: {
+        id: review.customer.id,
+        name: `${review.customer.user.first_name} ${review.customer.user.last_name}`,
+        email: review.customer.user.email,
+        phone: review.customer.user.phone_number,
+      },
+      provider: {
+        id: review.provider.id,
+        businessName: review.provider.business_name,
+        ownerName: `${review.provider.user.first_name} ${review.provider.user.last_name}`,
+        email: review.provider.user.email,
+        phone: review.provider.user.phone_number,
+        region: review.provider.local_service_manager.region,
+      },
+      job: {
+        id: review.job.id,
+        service: review.job.service.name,
+        category: review.job.service.category,
+        status: review.job.status,
+        completedAt: review.job.completed_at,
+        price: Number(review.job.price),
+      },
+      createdAt: review.created_at,
+    };
+  }
+
+  /**
+   * Delete a review (admin only - for inappropriate content)
+   */
+  async deleteReview(reviewId: number) {
+    const review = await this.prisma.ratings_feedback.findUnique({
+      where: { id: reviewId },
+      include: {
+        provider: true,
+      },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    // Delete the review and recalculate provider rating
+    return await this.prisma.$transaction(async (tx) => {
+      // Delete the review
+      await tx.ratings_feedback.delete({
+        where: { id: reviewId },
+      });
+
+      // Recalculate provider rating
+      const remainingReviews = await tx.ratings_feedback.findMany({
+        where: { provider_id: review.provider_id },
+      });
+
+      const newRating =
+        remainingReviews.length > 0
+          ? remainingReviews.reduce((sum, f) => sum + (f.rating || 0), 0) /
+            remainingReviews.length
+          : 0;
+
+      await tx.service_providers.update({
+        where: { id: review.provider_id },
+        data: { rating: newRating },
+      });
+
+      // Notify provider
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: review.provider.user_id,
+          type: 'system',
+          title: 'Review Removed',
+          message: `A review has been removed by admin. Your updated rating is ${newRating.toFixed(2)}.`,
+        },
+      });
+
+      return {
+        message: 'Review deleted successfully',
+        newProviderRating: Number(newRating.toFixed(2)),
+      };
+    });
+  }
 }

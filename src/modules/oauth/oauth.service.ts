@@ -248,6 +248,17 @@ export class OAuthService {
               });
             }
           }
+
+          // Notify LSM about new provider registration
+          await prisma.notifications.create({
+            data: {
+              recipient_type: 'local_service_manager',
+              recipient_id: availableLSM.user_id,
+              type: 'system',
+              title: 'New Provider Registration',
+              message: `New service provider "${businessName || firstName + ' ' + lastName}" registered in your region. Review their onboarding application.`,
+            },
+          });
           
           break;
 
@@ -255,6 +266,31 @@ export class OAuthService {
           if (!region) {
             throw new BadRequestException(
               'Region is required for LSM registration. Please specify the region.',
+            );
+          }
+
+          // Check if LSM already exists for this region (ONE LSM PER REGION RULE)
+          const existingLSM = await prisma.local_service_managers.findFirst({
+            where: {
+              region: region,
+              status: 'active',
+            },
+            include: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                  email: true,
+                },
+              },
+            },
+          });
+
+          if (existingLSM) {
+            throw new ConflictException(
+              `An active LSM already exists for region "${region}". ` +
+              `LSM: ${existingLSM.user.first_name} ${existingLSM.user.last_name} (${existingLSM.user.email}). ` +
+              `Only one LSM is allowed per region. Please contact admin to replace the existing LSM.`,
             );
           }
           

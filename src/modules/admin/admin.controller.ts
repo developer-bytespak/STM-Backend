@@ -30,6 +30,7 @@ import {
   RejectBanRequestDto,
 } from './dto/reject-ban-request.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
+import { AdminReviewFiltersDto } from './dto/review-filters.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -520,5 +521,65 @@ export class AdminController {
     @Body() dto: UpdateSettingsDto,
   ) {
     return this.adminService.updateSettings(userId, dto);
+  }
+
+  // ==================== REVIEW MANAGEMENT ====================
+
+  /**
+   * Get all reviews across the platform
+   */
+  @Get('reviews')
+  @ApiOperation({ summary: 'Get all reviews with filters for platform monitoring' })
+  @ApiResponse({ status: 200, description: 'Reviews retrieved successfully' })
+  async getAllReviews(
+    @Query('providerId') providerId?: string,
+    @Query('customerId') customerId?: string,
+    @Query('region') region?: string,
+    @Query('minRating') minRating?: string,
+    @Query('maxRating') maxRating?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllReviews({
+      providerId: providerId ? parseInt(providerId) : undefined,
+      customerId: customerId ? parseInt(customerId) : undefined,
+      region,
+      minRating: minRating ? parseInt(minRating) : undefined,
+      maxRating: maxRating ? parseInt(maxRating) : undefined,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  /**
+   * Get platform-wide review statistics
+   */
+  @Get('reviews/stats')
+  @ApiOperation({ summary: 'Get platform-wide review statistics' })
+  @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
+  async getReviewStats() {
+    return this.adminService.getReviewStats();
+  }
+
+  /**
+   * Get specific review details
+   */
+  @Get('reviews/:id')
+  @ApiOperation({ summary: 'Get review details by ID' })
+  @ApiResponse({ status: 200, description: 'Review retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Review not found' })
+  async getReviewById(@Param('id', ParseIntPipe) reviewId: number) {
+    return this.adminService.getReviewById(reviewId);
+  }
+
+  /**
+   * Delete a review (for inappropriate content)
+   */
+  @Delete('reviews/:id')
+  @ApiOperation({ summary: 'Delete inappropriate review and recalculate provider rating' })
+  @ApiResponse({ status: 200, description: 'Review deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Review not found' })
+  async deleteReview(@Param('id', ParseIntPipe) reviewId: number) {
+    return this.adminService.deleteReview(reviewId);
   }
 }
