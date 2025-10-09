@@ -1350,4 +1350,1407 @@ export class AdminService {
       message: 'Provider unbanned successfully',
     };
   }
+
+  // ==================== DASHBOARD ====================
+
+  /**
+   * Get admin dashboard overview with all key statistics
+   */
+  async getDashboard() {
+    // Execute all queries in parallel for better performance
+    const [
+      lsmStats,
+      providerStats,
+      customerCount,
+      jobStats,
+      revenue,
+      pendingServiceRequests,
+      pendingDisputes,
+      recentActivity,
+      topRegions,
+    ] = await Promise.all([
+      // 1. LSM Statistics
+      this.prisma.local_service_managers.groupBy({
+        by: ['status'],
+        _count: true,
+      }),
+
+      // 2. Provider Statistics
+      this.prisma.service_providers.groupBy({
+        by: ['status'],
+        _count: true,
+      }),
+
+      // 3. Total Customers
+      this.prisma.customers.count(),
+
+      // 4. Job Statistics
+      this.prisma.jobs.groupBy({
+        by: ['status'],
+        _count: true,
+      }),
+
+      // 5. Total Revenue (paid jobs)
+      this.prisma.jobs.aggregate({
+        where: { status: 'paid' },
+        _sum: { price: true },
+      }),
+
+      // 6. Pending Service Requests
+      this.prisma.service_requests.count({
+        where: {
+          lsm_approved: true,
+          admin_approved: false,
+          final_status: 'pending',
+        },
+      }),
+
+      // 7. Pending Disputes
+      this.prisma.disputes.count({
+        where: { status: 'pending' },
+      }),
+
+      // 8. Recent Activity (last 24 hours)
+      this.getRecentActivity(),
+
+      // 9. Top 5 Regions
+      this.getTopRegions(),
+    ]);
+
+    // Process LSM stats
+    const lsmCounts = { active: 0, inactive: 0 };
+    lsmStats.forEach((stat) => {
+      lsmCounts[stat.status] = stat._count;
+    });
+
+    // Process Provider stats
+    const providerCounts = { pending: 0, active: 0, inactive: 0, banned: 0 };
+    providerStats.forEach((stat) => {
+      providerCounts[stat.status] = stat._count;
+    });
+
+    // Process Job stats
+    const jobCounts = {
+      new: 0,
+      in_progress: 0,
+      completed: 0,
+      paid: 0,
+      cancelled: 0,
+      rejected_by_sp: 0,
+    };
+    jobStats.forEach((stat) => {
+      jobCounts[stat.status] = stat._count;
+    });
+
+    const totalLSMs = lsmCounts.active + lsmCounts.inactive;
+    const totalProviders =
+      providerCounts.pending +
+      providerCounts.active +
+      providerCounts.inactive +
+      providerCounts.banned;
+    const totalJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
+
+    return {
+      summary: {
+        totalLSMs,
+        totalProviders,
+        totalCustomers: customerCount,
+        totalJobs,
+        totalRevenue: revenue._sum.price ? Number(revenue._sum.price) : 0,
+      },
+      lsms: lsmCounts,
+      providers: providerCounts,
+      jobs: jobCounts,
+      pendingActions: {
+        serviceRequests: pendingServiceRequests,
+        disputes: pendingDisputes,
+      },
+      recentActivity,
+      topRegions,
+    };
+  }
+
+  /**
+   * Get recent activity statistics (last 24 hours)
+   */
+  private async getRecentActivity() {
+    const last24Hours = new Date();
+    last24Hours.setHours(last24Hours.getHours() - 24);
+
+    const [newJobs, completedJobs, newProviders, newCustomers] =
+      await Promise.all([
+        this.prisma.jobs.count({
+          where: { created_at: { gte: last24Hours } },
+        }),
+        this.prisma.jobs.count({
+          where: {
+            status: 'completed',
+            completed_at: { gte: last24Hours },
+          },
+        }),
+        this.prisma.service_providers.count({
+          where: { created_at: { gte: last24Hours } },
+        }),
+        this.prisma.customers.count({
+          where: { created_at: { gte: last24Hours } },
+        }),
+      ]);
+
+    return {
+      newJobs24h: newJobs,
+      completedJobs24h: completedJobs,
+      newProviders24h: newProviders,
+      newCustomers24h: newCustomers,
+    };
+  }
+
+  /**
+   * Get top 5 regions by job count
+   */
+  private async getTopRegions() {
+    const lsms = await this.prisma.local_service_managers.findMany({
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+          },
+        },
+        service_providers: {
+          include: {
+            jobs: {
+              where: { status: 'paid' },
+              select: { price: true },
+            },
+          },
+        },
+      },
+    });
+
+    const regions = lsms.map((lsm) => {
+      const providersCount = lsm.service_providers.length;
+      const jobsCount = lsm.service_providers.reduce(
+        (sum, provider) => sum + provider.jobs.length,
+        0,
+      );
+      const revenue = lsm.service_providers.reduce(
+        (sum, provider) =>
+          sum +
+          provider.jobs.reduce((jobSum, job) => jobSum + Number(job.price), 0),
+        0,
+      );
+
+      return {
+        region: lsm.region,
+        lsmName: `${lsm.user.first_name} ${lsm.user.last_name}`,
+        providersCount,
+        jobsCount,
+        revenue,
+      };
+    });
+
+    // Sort by revenue and return top 5
+    return regions.sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  }
+
+  // ==================== CUSTOMER MANAGEMENT ====================
+
+  /**
+   * Get all customers with filters
+   */
+  async getAllCustomers(filters: {
+    search?: string;
+    region?: string;
+    minJobs?: number;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const {
+      search,
+      region,
+      minJobs,
+      status,
+      page = 1,
+      limit = 20,
+    } = filters;
+
+    // Enforce max limit
+    const finalLimit = Math.min(limit, 100);
+
+    // Build where clause
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        {
+          user: {
+            OR: [
+              { first_name: { contains: search, mode: 'insensitive' } },
+              { last_name: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+        },
+      ];
+    }
+
+    if (region) {
+      where.region = { contains: region, mode: 'insensitive' };
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    // Get total count
+    const total = await this.prisma.customers.count({ where });
+
+    // Get customers with pagination
+    const customers = await this.prisma.customers.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true,
+            phone_number: true,
+            created_at: true,
+          },
+        },
+        jobs: {
+          select: {
+            id: true,
+            status: true,
+            price: true,
+            created_at: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      skip: (page - 1) * finalLimit,
+      take: finalLimit,
+    });
+
+    // Process and calculate stats for each customer
+    let data = customers.map((customer) => {
+      const totalJobs = customer.jobs.length;
+      const completedJobs = customer.jobs.filter(
+        (job) => job.status === 'completed' || job.status === 'paid',
+      ).length;
+      const activeJobs = customer.jobs.filter((job) =>
+        ['new', 'in_progress'].includes(job.status),
+      ).length;
+      const totalSpent = customer.jobs
+        .filter((job) => job.status === 'paid')
+        .reduce((sum, job) => sum + Number(job.price), 0);
+      const averageJobValue = completedJobs > 0 ? totalSpent / completedJobs : 0;
+      const lastJob = customer.jobs.sort(
+        (a, b) => b.created_at.getTime() - a.created_at.getTime(),
+      )[0];
+
+      return {
+        id: customer.id,
+        name: `${customer.user.first_name} ${customer.user.last_name}`,
+        email: customer.user.email,
+        phone: customer.user.phone_number,
+        region: customer.region,
+        zipcode: customer.zipcode || 'N/A',
+        status: customer.status,
+        totalJobs,
+        completedJobs,
+        activeJobs,
+        totalSpent,
+        averageJobValue: Number(averageJobValue.toFixed(2)),
+        lastJobDate: lastJob ? lastJob.created_at : null,
+        joinedAt: customer.user.created_at,
+      };
+    });
+
+    // Filter by minJobs if provided (in-memory filter)
+    if (minJobs !== undefined) {
+      data = data.filter((customer) => customer.totalJobs >= minJobs);
+    }
+
+    return {
+      data,
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
+    };
+  }
+
+  /**
+   * Get customer by ID with detailed information
+   */
+  async getCustomerById(customerId: number) {
+    const customer = await this.prisma.customers.findUnique({
+      where: { id: customerId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true,
+            phone_number: true,
+            created_at: true,
+            last_login: true,
+            is_email_verified: true,
+          },
+        },
+        jobs: {
+          include: {
+            service: {
+              select: {
+                name: true,
+                category: true,
+              },
+            },
+            service_provider: {
+              select: {
+                business_name: true,
+                user: {
+                  select: {
+                    first_name: true,
+                    last_name: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { created_at: 'desc' },
+          take: 20, // Recent 20 jobs
+        },
+        feedbacks: {
+          select: {
+            id: true,
+            rating: true,
+            feedback: true,
+            created_at: true,
+          },
+        },
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    // Calculate statistics
+    const totalJobs = customer.jobs.length;
+    const completedJobs = customer.jobs.filter(
+      (job) => job.status === 'completed' || job.status === 'paid',
+    ).length;
+    const cancelledJobs = customer.jobs.filter(
+      (job) => job.status === 'cancelled',
+    ).length;
+    const activeJobs = customer.jobs.filter((job) =>
+      ['new', 'in_progress'].includes(job.status),
+    ).length;
+    const totalSpent = customer.jobs
+      .filter((job) => job.status === 'paid')
+      .reduce((sum, job) => sum + Number(job.price), 0);
+    const averageJobValue = completedJobs > 0 ? totalSpent / completedJobs : 0;
+
+    return {
+      customer: {
+        id: customer.id,
+        name: `${customer.user.first_name} ${customer.user.last_name}`,
+        email: customer.user.email,
+        phone: customer.user.phone_number,
+        region: customer.region,
+        zipcode: customer.zipcode || 'N/A',
+        address: customer.address,
+        status: customer.status,
+        banReason: customer.ban_reason,
+        bannedAt: customer.banned_at,
+        joinedAt: customer.user.created_at,
+        lastLogin: customer.user.last_login,
+        isEmailVerified: customer.user.is_email_verified,
+      },
+      statistics: {
+        totalJobs,
+        completedJobs,
+        cancelledJobs,
+        activeJobs,
+        totalSpent,
+        averageJobValue: Number(averageJobValue.toFixed(2)),
+        feedbackGiven: customer.feedbacks.length,
+      },
+      recentJobs: customer.jobs.map((job) => ({
+        id: job.id,
+        service: job.service.name,
+        category: job.service.category,
+        provider: job.service_provider.business_name ||
+          `${job.service_provider.user.first_name} ${job.service_provider.user.last_name}`,
+        status: job.status,
+        price: Number(job.price),
+        createdAt: job.created_at,
+        completedAt: job.completed_at,
+      })),
+      paymentHistory: customer.jobs
+        .filter((job) => job.status === 'paid' || job.status === 'completed')
+        .map((job) => ({
+          jobId: job.id,
+          service: job.service.name,
+          amount: Number(job.price),
+          paidAt: job.paid_at,
+          status: job.status,
+        })),
+    };
+  }
+
+  /**
+   * Ban a customer - cancel active jobs and notify all parties
+   */
+  async banCustomer(customerId: number, reason: string) {
+    // 1. Find customer with active jobs
+    const customer = await this.prisma.customers.findUnique({
+      where: { id: customerId },
+      include: {
+        user: true,
+        jobs: {
+          where: {
+            status: { in: ['new', 'in_progress'] },
+          },
+          include: {
+            service_provider: {
+              include: { user: true },
+            },
+            service: true,
+          },
+        },
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    if (customer.status === 'banned') {
+      throw new BadRequestException('Customer is already banned');
+    }
+
+    // 2. Transaction: Ban + Cancel Jobs + Notify
+    return await this.prisma.$transaction(async (tx) => {
+      // a. Ban customer
+      await tx.customers.update({
+        where: { id: customerId },
+        data: {
+          status: 'banned',
+          ban_reason: reason,
+          banned_at: new Date(),
+        },
+      });
+
+      let jobsCancelled = 0;
+      const cancelledJobDetails: string[] = [];
+
+      // b. Cancel all active jobs
+      if (customer.jobs.length > 0) {
+        await tx.jobs.updateMany({
+          where: {
+            customer_id: customerId,
+            status: { in: ['new', 'in_progress'] },
+          },
+          data: {
+            status: 'cancelled',
+            rejection_reason: 'Customer account banned',
+          },
+        });
+
+        jobsCancelled = customer.jobs.length;
+
+        // c. Notify each affected provider
+        for (const job of customer.jobs) {
+          cancelledJobDetails.push(
+            `#${job.id} (${job.service.name})`,
+          );
+
+          await tx.notifications.create({
+            data: {
+              recipient_type: 'service_provider',
+              recipient_id: job.service_provider.user_id,
+              type: 'system',
+              title: 'Job Cancelled',
+              message: `Job #${job.id} (${job.service.name}) has been cancelled because the customer account was suspended.`,
+            },
+          });
+        }
+      }
+
+      // d. Notify customer
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'customer',
+          recipient_id: customer.user_id,
+          type: 'system',
+          title: 'Account Suspended',
+          message: `Your account has been suspended. Reason: ${reason}. All active bookings have been cancelled.`,
+        },
+      });
+
+      const message =
+        jobsCancelled > 0
+          ? `Customer banned successfully. ${jobsCancelled} active job(s) cancelled: ${cancelledJobDetails.join(', ')}. ${jobsCancelled} provider(s) notified.`
+          : 'Customer banned successfully. No active jobs to cancel.';
+
+      return {
+        id: customer.id,
+        status: 'banned',
+        reason,
+        jobsCancelled,
+        cancelledJobs: cancelledJobDetails,
+        message,
+      };
+    });
+  }
+
+  /**
+   * Unban a customer - reactivate account
+   */
+  async unbanCustomer(customerId: number) {
+    // 1. Find customer
+    const customer = await this.prisma.customers.findUnique({
+      where: { id: customerId },
+      include: { user: true },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    if (customer.status !== 'banned') {
+      throw new BadRequestException('Customer is not banned');
+    }
+
+    // 2. Unban customer (keep cancelled jobs as history)
+    await this.prisma.customers.update({
+      where: { id: customerId },
+      data: {
+        status: 'active',
+        ban_reason: null,
+        banned_at: null,
+      },
+    });
+
+    // 3. Notify customer
+    await this.prisma.notifications.create({
+      data: {
+        recipient_type: 'customer',
+        recipient_id: customer.user_id,
+        type: 'system',
+        title: 'Account Reactivated',
+        message:
+          'Your account has been reactivated. You can now create new bookings.',
+      },
+    });
+
+    return {
+      id: customer.id,
+      status: 'active',
+      message:
+        'Customer unbanned successfully. Previous cancelled jobs remain as history.',
+    };
+  }
+
+  // ==================== DISPUTES MANAGEMENT ====================
+
+  /**
+   * Get all disputes with filters
+   */
+  async getAllDisputes(filters: {
+    status?: string;
+    region?: string;
+    raisedBy?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const {
+      status,
+      region,
+      raisedBy,
+      page = 1,
+      limit = 20,
+    } = filters;
+
+    // Enforce max limit
+    const finalLimit = Math.min(limit, 100);
+
+    // Build where clause
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (raisedBy) {
+      where.raised_by_type = raisedBy;
+    }
+
+    // Region filter requires join through job -> provider -> lsm
+    if (region) {
+      where.job = {
+        service_provider: {
+          local_service_manager: {
+            region: { contains: region, mode: 'insensitive' },
+          },
+        },
+      };
+    }
+
+    // Get total count
+    const total = await this.prisma.disputes.count({ where });
+
+    // Get disputes with pagination
+    const disputes = await this.prisma.disputes.findMany({
+      where,
+      include: {
+        job: {
+          select: {
+            id: true,
+            price: true,
+            service: {
+              select: {
+                name: true,
+              },
+            },
+            customer: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    first_name: true,
+                    last_name: true,
+                  },
+                },
+              },
+            },
+            service_provider: {
+              select: {
+                id: true,
+                business_name: true,
+                user: {
+                  select: {
+                    first_name: true,
+                    last_name: true,
+                  },
+                },
+                local_service_manager: {
+                  select: {
+                    id: true,
+                    region: true,
+                    user: {
+                      select: {
+                        first_name: true,
+                        last_name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }], // pending first, then by date
+      skip: (page - 1) * finalLimit,
+      take: finalLimit,
+    });
+
+    return {
+      data: disputes.map((dispute) => ({
+        id: dispute.id,
+        job: {
+          id: dispute.job.id,
+          service: dispute.job.service.name,
+          price: Number(dispute.job.price),
+        },
+        customer: {
+          id: dispute.job.customer.id,
+          name: `${dispute.job.customer.user.first_name} ${dispute.job.customer.user.last_name}`,
+        },
+        provider: {
+          id: dispute.job.service_provider.id,
+          businessName:
+            dispute.job.service_provider.business_name ||
+            `${dispute.job.service_provider.user.first_name} ${dispute.job.service_provider.user.last_name}`,
+        },
+        raisedBy: dispute.raised_by_type,
+        status: dispute.status,
+        region: dispute.job.service_provider.local_service_manager.region,
+        lsm: {
+          id: dispute.job.service_provider.local_service_manager.id,
+          name: `${dispute.job.service_provider.local_service_manager.user.first_name} ${dispute.job.service_provider.local_service_manager.user.last_name}`,
+        },
+        resolvedBy: dispute.resolved_by,
+        createdAt: dispute.created_at,
+        resolvedAt: dispute.resolved_at,
+      })),
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
+    };
+  }
+
+  /**
+   * Get dispute by ID with full details and chat history
+   */
+  async getDisputeById(disputeId: number) {
+    const dispute = await this.prisma.disputes.findUnique({
+      where: { id: disputeId },
+      include: {
+        job: {
+          include: {
+            service: {
+              select: {
+                name: true,
+                category: true,
+              },
+            },
+            customer: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    first_name: true,
+                    last_name: true,
+                    email: true,
+                    phone_number: true,
+                  },
+                },
+              },
+            },
+            service_provider: {
+              select: {
+                id: true,
+                business_name: true,
+                user: {
+                  select: {
+                    first_name: true,
+                    last_name: true,
+                    email: true,
+                    phone_number: true,
+                  },
+                },
+                local_service_manager: {
+                  select: {
+                    id: true,
+                    region: true,
+                    user: {
+                      select: {
+                        first_name: true,
+                        last_name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            chats: {
+              include: {
+                messages: {
+                  orderBy: { created_at: 'asc' },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!dispute) {
+      throw new NotFoundException('Dispute not found');
+    }
+
+    // Get chat history
+    const chat = dispute.job.chats[0]; // Should be only one chat per job
+    const chatHistory = chat
+      ? chat.messages.map((msg) => ({
+          id: msg.id,
+          senderType: msg.sender_type,
+          message: msg.message,
+          messageType: msg.message_type,
+          createdAt: msg.created_at,
+        }))
+      : [];
+
+    return {
+      dispute: {
+        id: dispute.id,
+        status: dispute.status,
+        raisedBy: dispute.raised_by_type,
+        resolvedBy: dispute.resolved_by,
+        createdAt: dispute.created_at,
+        resolvedAt: dispute.resolved_at,
+      },
+      job: {
+        id: dispute.job.id,
+        service: dispute.job.service.name,
+        category: dispute.job.service.category,
+        price: Number(dispute.job.price),
+        status: dispute.job.status,
+        scheduledAt: dispute.job.scheduled_at,
+        completedAt: dispute.job.completed_at,
+        answersJson: dispute.job.answers_json, // Include dynamic form answers
+      },
+      customer: {
+        id: dispute.job.customer.id,
+        name: `${dispute.job.customer.user.first_name} ${dispute.job.customer.user.last_name}`,
+        email: dispute.job.customer.user.email,
+        phone: dispute.job.customer.user.phone_number,
+      },
+      provider: {
+        id: dispute.job.service_provider.id,
+        businessName:
+          dispute.job.service_provider.business_name ||
+          `${dispute.job.service_provider.user.first_name} ${dispute.job.service_provider.user.last_name}`,
+        ownerName: `${dispute.job.service_provider.user.first_name} ${dispute.job.service_provider.user.last_name}`,
+        email: dispute.job.service_provider.user.email,
+        phone: dispute.job.service_provider.user.phone_number,
+      },
+      lsm: {
+        id: dispute.job.service_provider.local_service_manager.id,
+        name: `${dispute.job.service_provider.local_service_manager.user.first_name} ${dispute.job.service_provider.local_service_manager.user.last_name}`,
+        region: dispute.job.service_provider.local_service_manager.region,
+        email: dispute.job.service_provider.local_service_manager.user.email,
+      },
+      chatHistory,
+    };
+  }
+
+  // ==================== JOBS MONITORING ====================
+
+  /**
+   * Get all jobs with comprehensive filters
+   */
+  async getAllJobs(filters: {
+    status?: string;
+    region?: string;
+    service?: string;
+    customerId?: number;
+    providerId?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const {
+      status,
+      region,
+      service,
+      customerId,
+      providerId,
+      minPrice,
+      maxPrice,
+      fromDate,
+      toDate,
+      page = 1,
+      limit = 20,
+    } = filters;
+
+    // Enforce max limit
+    const finalLimit = Math.min(limit, 100);
+
+    // Build where clause
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (customerId) {
+      where.customer_id = customerId;
+    }
+
+    if (providerId) {
+      where.provider_id = providerId;
+    }
+
+    // Price range filter
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      where.price = {};
+      if (minPrice !== undefined) {
+        where.price.gte = minPrice;
+      }
+      if (maxPrice !== undefined) {
+        where.price.lte = maxPrice;
+      }
+    }
+
+    // Date range filter
+    if (fromDate || toDate) {
+      where.created_at = {};
+      if (fromDate) {
+        where.created_at.gte = new Date(fromDate);
+      }
+      if (toDate) {
+        const endDate = new Date(toDate);
+        endDate.setHours(23, 59, 59, 999); // End of day
+        where.created_at.lte = endDate;
+      }
+    }
+
+    // Service filter (name or category)
+    if (service) {
+      where.service = {
+        OR: [
+          { name: { contains: service, mode: 'insensitive' } },
+          { category: { contains: service, mode: 'insensitive' } },
+        ],
+      };
+    }
+
+    // Region filter
+    if (region) {
+      where.service_provider = {
+        local_service_manager: {
+          region: { contains: region, mode: 'insensitive' },
+        },
+      };
+    }
+
+    // Get total count
+    const total = await this.prisma.jobs.count({ where });
+
+    // Get jobs with pagination
+    const jobs = await this.prisma.jobs.findMany({
+      where,
+      include: {
+        service: {
+          select: {
+            name: true,
+            category: true,
+          },
+        },
+        customer: {
+          select: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+              },
+            },
+          },
+        },
+        service_provider: {
+          select: {
+            business_name: true,
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+              },
+            },
+            local_service_manager: {
+              select: {
+                region: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      skip: (page - 1) * finalLimit,
+      take: finalLimit,
+    });
+
+    // Calculate summary
+    const totalValue = jobs.reduce((sum, job) => sum + Number(job.price), 0);
+
+    return {
+      data: jobs.map((job) => ({
+        id: job.id,
+        service: job.service.name,
+        category: job.service.category,
+        customer: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
+        provider:
+          job.service_provider.business_name ||
+          `${job.service_provider.user.first_name} ${job.service_provider.user.last_name}`,
+        status: job.status,
+        price: Number(job.price),
+        region: job.service_provider.local_service_manager.region,
+        scheduledAt: job.scheduled_at,
+        completedAt: job.completed_at,
+        createdAt: job.created_at,
+      })),
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
+      summary: {
+        totalJobs: total,
+        totalValue,
+      },
+    };
+  }
+
+  // ==================== BAN REQUESTS ====================
+
+  /**
+   * Get all ban requests from LSMs
+   */
+  async getBanRequests(filters: {
+    status?: string;
+    region?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { status, region, page = 1, limit = 20 } = filters;
+    const finalLimit = Math.min(limit, 100);
+
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (region) {
+      where.provider = {
+        local_service_manager: {
+          region: { contains: region, mode: 'insensitive' },
+        },
+      };
+    }
+
+    const total = await this.prisma.ban_requests.count({ where });
+
+    const banRequests = await this.prisma.ban_requests.findMany({
+      where,
+      include: {
+        provider: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                email: true,
+              },
+            },
+            local_service_manager: {
+              include: {
+                user: {
+                  select: {
+                    first_name: true,
+                    last_name: true,
+                  },
+                },
+              },
+            },
+            jobs: {
+              where: {
+                status: { in: ['new', 'in_progress'] },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }], // pending first
+      skip: (page - 1) * finalLimit,
+      take: finalLimit,
+    });
+
+    return {
+      data: banRequests.map((request) => ({
+        id: request.id,
+        provider: {
+          id: request.provider.id,
+          businessName: request.provider.business_name,
+          ownerName: `${request.provider.user.first_name} ${request.provider.user.last_name}`,
+          email: request.provider.user.email,
+          status: request.provider.status,
+          activeJobs: request.provider.jobs.length,
+        },
+        requestedBy: {
+          lsmUserId: request.requested_by_lsm,
+          lsmName: `${request.provider.local_service_manager.user.first_name} ${request.provider.local_service_manager.user.last_name}`,
+          region: request.provider.local_service_manager.region,
+        },
+        reason: request.reason,
+        status: request.status,
+        adminNotes: request.admin_notes,
+        reviewedBy: request.admin_reviewed_by,
+        reviewedAt: request.admin_reviewed_at,
+        createdAt: request.created_at,
+      })),
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
+    };
+  }
+
+  /**
+   * Approve LSM ban request and ban the provider
+   */
+  async approveBanRequest(adminUserId: number, requestId: number, adminNotes?: string) {
+    const banRequest = await this.prisma.ban_requests.findUnique({
+      where: { id: requestId },
+      include: {
+        provider: {
+          include: {
+            user: true,
+            jobs: {
+              where: {
+                status: { in: ['new', 'in_progress'] },
+              },
+            },
+            local_service_manager: {
+              include: { user: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!banRequest) {
+      throw new NotFoundException('Ban request not found');
+    }
+
+    if (banRequest.status !== 'pending') {
+      throw new BadRequestException('Ban request already reviewed');
+    }
+
+    const provider = banRequest.provider;
+
+    if (provider.status === 'banned') {
+      throw new BadRequestException('Provider is already banned');
+    }
+
+    // Check active jobs
+    if (provider.jobs.length > 0) {
+      throw new BadRequestException(
+        `Cannot ban provider with ${provider.jobs.length} active jobs. Please wait for jobs to complete or contact LSM to cancel them.`,
+      );
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Update ban request
+      await tx.ban_requests.update({
+        where: { id: requestId },
+        data: {
+          status: 'approved',
+          admin_reviewed_by: adminUserId,
+          admin_reviewed_at: new Date(),
+          admin_notes: adminNotes || 'Ban request approved',
+        },
+      });
+
+      // 2. Ban provider
+      await tx.service_providers.update({
+        where: { id: provider.id },
+        data: {
+          status: 'banned',
+          rejection_reason: banRequest.reason,
+        },
+      });
+
+      // 3. Notify provider
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: provider.user_id,
+          type: 'system',
+          title: 'Account Banned',
+          message: `Your account has been banned. Reason: ${banRequest.reason}`,
+        },
+      });
+
+      // 4. Notify LSM who requested
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'local_service_manager',
+          recipient_id: banRequest.requested_by_lsm,
+          type: 'system',
+          title: 'Ban Request Approved',
+          message: `Your ban request for provider "${provider.business_name}" has been approved by admin.`,
+        },
+      });
+
+      return {
+        id: banRequest.id,
+        providerId: provider.id,
+        status: 'approved',
+        message: 'Ban request approved. Provider has been banned.',
+      };
+    });
+  }
+
+  /**
+   * Reject LSM ban request
+   */
+  async rejectBanRequest(adminUserId: number, requestId: number, adminNotes: string) {
+    const banRequest = await this.prisma.ban_requests.findUnique({
+      where: { id: requestId },
+      include: {
+        provider: {
+          include: {
+            local_service_manager: {
+              include: { user: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!banRequest) {
+      throw new NotFoundException('Ban request not found');
+    }
+
+    if (banRequest.status !== 'pending') {
+      throw new BadRequestException('Ban request already reviewed');
+    }
+
+    await this.prisma.ban_requests.update({
+      where: { id: requestId },
+      data: {
+        status: 'rejected',
+        admin_reviewed_by: adminUserId,
+        admin_reviewed_at: new Date(),
+        admin_notes: adminNotes,
+      },
+    });
+
+    // Notify LSM
+    await this.prisma.notifications.create({
+      data: {
+        recipient_type: 'local_service_manager',
+        recipient_id: banRequest.requested_by_lsm,
+        type: 'system',
+        title: 'Ban Request Rejected',
+        message: `Your ban request for provider "${banRequest.provider.business_name}" was rejected by admin. Notes: ${adminNotes}`,
+      },
+    });
+
+    return {
+      id: banRequest.id,
+      status: 'rejected',
+      adminNotes,
+      message: 'Ban request rejected. LSM has been notified.',
+    };
+  }
+
+  // ==================== REGIONAL REPORTS ====================
+
+  /**
+   * Get regional performance statistics
+   */
+  async getRegionalReports() {
+    const lsms = await this.prisma.local_service_managers.findMany({
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true,
+          },
+        },
+        service_providers: {
+          include: {
+            jobs: {
+              select: {
+                status: true,
+                price: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { region: 'asc' },
+    });
+
+    const regions = await Promise.all(
+      lsms.map(async (lsm) => {
+        const providers = lsm.service_providers;
+
+        // Provider counts by status
+        const totalProviders = providers.length;
+        const activeProviders = providers.filter(
+          (p) => p.status === 'active',
+        ).length;
+        const pendingProviders = providers.filter(
+          (p) => p.status === 'pending',
+        ).length;
+        const bannedProviders = providers.filter(
+          (p) => p.status === 'banned',
+        ).length;
+
+        // Job statistics
+        const allJobs = providers.flatMap((p) => p.jobs);
+        const totalJobs = allJobs.length;
+        const completedJobs = allJobs.filter(
+          (j) => j.status === 'completed' || j.status === 'paid',
+        ).length;
+        const activeJobs = allJobs.filter((j) =>
+          ['new', 'in_progress'].includes(j.status),
+        ).length;
+
+        // Revenue
+        const totalRevenue = allJobs
+          .filter((j) => j.status === 'paid')
+          .reduce((sum, job) => sum + Number(job.price), 0);
+
+        // Pending disputes in this region
+        const pendingDisputes = await this.prisma.disputes.count({
+          where: {
+            status: 'pending',
+            job: {
+              service_provider: {
+                lsm_id: lsm.id,
+              },
+            },
+          },
+        });
+
+        // Average provider rating
+        const averageProviderRating =
+          providers.length > 0
+            ? providers.reduce((sum, p) => sum + Number(p.rating), 0) /
+              providers.length
+            : 0;
+
+        return {
+          region: lsm.region,
+          lsm: {
+            id: lsm.id,
+            name: `${lsm.user.first_name} ${lsm.user.last_name}`,
+            email: lsm.user.email,
+            status: lsm.status,
+          },
+          stats: {
+            totalProviders,
+            activeProviders,
+            pendingProviders,
+            bannedProviders,
+            totalJobs,
+            completedJobs,
+            activeJobs,
+            totalRevenue,
+            pendingDisputes,
+            averageProviderRating: Number(averageProviderRating.toFixed(2)),
+          },
+        };
+      }),
+    );
+
+    // Sort by revenue (highest first)
+    return {
+      regions: regions.sort((a, b) => b.stats.totalRevenue - a.stats.totalRevenue),
+    };
+  }
 }

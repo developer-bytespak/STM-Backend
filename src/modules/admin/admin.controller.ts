@@ -24,6 +24,11 @@ import { UpdateLsmDto } from './dto/update-lsm.dto';
 import { ReplaceLsmDto } from './dto/replace-lsm.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { BanProviderDto } from './dto/ban-provider.dto';
+import { BanCustomerDto } from './dto/ban-customer.dto';
+import {
+  ApproveBanRequestDto,
+  RejectBanRequestDto,
+} from './dto/reject-ban-request.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -272,5 +277,222 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Provider not found' })
   async unbanProvider(@Param('id', ParseIntPipe) providerId: number) {
     return this.adminService.unbanProvider(providerId);
+  }
+
+  // ==================== DASHBOARD ====================
+
+  /**
+   * Get admin dashboard overview
+   */
+  @Get('dashboard')
+  @ApiOperation({ summary: 'Get admin dashboard with all statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard data retrieved successfully' })
+  async getDashboard() {
+    return this.adminService.getDashboard();
+  }
+
+  // ==================== CUSTOMER MANAGEMENT ====================
+
+  /**
+   * Get all customers with filters
+   */
+  @Get('customers')
+  @ApiOperation({ summary: 'Get all customers with filters and pagination' })
+  @ApiResponse({ status: 200, description: 'Customers retrieved successfully' })
+  async getAllCustomers(
+    @Query('search') search?: string,
+    @Query('region') region?: string,
+    @Query('minJobs') minJobs?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllCustomers({
+      search,
+      region,
+      minJobs: minJobs ? parseInt(minJobs) : undefined,
+      status,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  /**
+   * Get customer by ID with detailed information
+   */
+  @Get('customers/:id')
+  @ApiOperation({ summary: 'Get customer details by ID' })
+  @ApiResponse({ status: 200, description: 'Customer retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Customer not found' })
+  async getCustomerById(@Param('id', ParseIntPipe) customerId: number) {
+    return this.adminService.getCustomerById(customerId);
+  }
+
+  /**
+   * Ban a customer
+   */
+  @Post('customers/:id/ban')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ban a customer and cancel active jobs' })
+  @ApiResponse({ status: 200, description: 'Customer banned successfully' })
+  @ApiResponse({ status: 400, description: 'Customer is already banned' })
+  @ApiResponse({ status: 404, description: 'Customer not found' })
+  async banCustomer(
+    @Param('id', ParseIntPipe) customerId: number,
+    @Body() dto: BanCustomerDto,
+  ) {
+    return this.adminService.banCustomer(customerId, dto.reason);
+  }
+
+  /**
+   * Unban a customer
+   */
+  @Post('customers/:id/unban')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unban a customer' })
+  @ApiResponse({ status: 200, description: 'Customer unbanned successfully' })
+  @ApiResponse({ status: 400, description: 'Customer is not banned' })
+  @ApiResponse({ status: 404, description: 'Customer not found' })
+  async unbanCustomer(@Param('id', ParseIntPipe) customerId: number) {
+    return this.adminService.unbanCustomer(customerId);
+  }
+
+  // ==================== DISPUTES MANAGEMENT ====================
+
+  /**
+   * Get all disputes with filters
+   */
+  @Get('disputes')
+  @ApiOperation({ summary: 'Get all disputes with filters and pagination' })
+  @ApiResponse({ status: 200, description: 'Disputes retrieved successfully' })
+  async getAllDisputes(
+    @Query('status') status?: string,
+    @Query('region') region?: string,
+    @Query('raisedBy') raisedBy?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllDisputes({
+      status,
+      region,
+      raisedBy,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  /**
+   * Get dispute by ID with full details and chat history
+   */
+  @Get('disputes/:id')
+  @ApiOperation({ summary: 'Get dispute details with chat history' })
+  @ApiResponse({ status: 200, description: 'Dispute retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Dispute not found' })
+  async getDisputeById(@Param('id', ParseIntPipe) disputeId: number) {
+    return this.adminService.getDisputeById(disputeId);
+  }
+
+  // ==================== JOBS MONITORING ====================
+
+  /**
+   * Get all jobs with comprehensive filters
+   */
+  @Get('jobs')
+  @ApiOperation({ summary: 'Get all jobs with filters for system-wide monitoring' })
+  @ApiResponse({ status: 200, description: 'Jobs retrieved successfully' })
+  async getAllJobs(
+    @Query('status') status?: string,
+    @Query('region') region?: string,
+    @Query('service') service?: string,
+    @Query('customerId') customerId?: string,
+    @Query('providerId') providerId?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllJobs({
+      status,
+      region,
+      service,
+      customerId: customerId ? parseInt(customerId) : undefined,
+      providerId: providerId ? parseInt(providerId) : undefined,
+      minPrice: minPrice ? parseFloat(minPrice) : undefined,
+      maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+      fromDate,
+      toDate,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  // ==================== BAN REQUESTS ====================
+
+  /**
+   * Get ban requests from LSMs
+   */
+  @Get('ban-requests')
+  @ApiOperation({ summary: 'Get ban requests from LSMs' })
+  @ApiResponse({ status: 200, description: 'Ban requests retrieved successfully' })
+  async getBanRequests(
+    @Query('status') status?: string,
+    @Query('region') region?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getBanRequests({
+      status,
+      region,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
+  /**
+   * Approve LSM ban request
+   */
+  @Post('ban-requests/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve LSM ban request and ban the provider' })
+  @ApiResponse({ status: 200, description: 'Ban request approved' })
+  @ApiResponse({ status: 400, description: 'Request already reviewed or provider has active jobs' })
+  @ApiResponse({ status: 404, description: 'Ban request not found' })
+  async approveBanRequest(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) requestId: number,
+    @Body() dto: ApproveBanRequestDto,
+  ) {
+    return this.adminService.approveBanRequest(userId, requestId, dto.adminNotes);
+  }
+
+  /**
+   * Reject LSM ban request
+   */
+  @Post('ban-requests/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject LSM ban request' })
+  @ApiResponse({ status: 200, description: 'Ban request rejected' })
+  @ApiResponse({ status: 400, description: 'Request already reviewed' })
+  @ApiResponse({ status: 404, description: 'Ban request not found' })
+  async rejectBanRequest(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) requestId: number,
+    @Body() dto: RejectBanRequestDto,
+  ) {
+    return this.adminService.rejectBanRequest(userId, requestId, dto.adminNotes);
+  }
+
+  // ==================== REGIONAL REPORTS ====================
+
+  /**
+   * Get regional performance statistics
+   */
+  @Get('reports/regions')
+  @ApiOperation({ summary: 'Get performance statistics for all regions' })
+  @ApiResponse({ status: 200, description: 'Regional reports retrieved successfully' })
+  async getRegionalReports() {
+    return this.adminService.getRegionalReports();
   }
 }

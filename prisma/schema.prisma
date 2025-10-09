@@ -34,6 +34,9 @@ model customers {
   zipcode          String?
   created_at       DateTime           @default(now())
   region           String
+  status           CustomerStatus     @default(active)
+  ban_reason       String?
+  banned_at        DateTime?
   chats            chat[]
   user             users              @relation(fields: [user_id], references: [id])
   jobs             jobs[]
@@ -76,6 +79,7 @@ model service_providers {
   local_service_manager local_service_managers   @relation(fields: [lsm_id], references: [id])
   user                  users                    @relation(fields: [user_id], references: [id])
   service_requests      service_requests[]
+  ban_requests          ban_requests[]
 }
 
 model local_service_managers {
@@ -128,17 +132,20 @@ model jobs {
   description       String?
   price             Decimal            @default(0.00) @db.Decimal(10, 2)
   location          String
-  answers_json      Json?
+  answers_json      Json? // Original customer answers
+  edited_answers    Json? // SP's negotiated changes
+  sp_accepted       Boolean            @default(false) // SP accepted (before customer closes deal)
   scheduled_at      DateTime?
   completed_at      DateTime?
   created_at        DateTime           @default(now())
   updated_at        DateTime           @updatedAt
-  paid_at           DateTime?
+  paid_at           DateTime? // Kept for backward compatibility
   pending_approval  Boolean            @default(false)
   rejection_reason  String?
   response_deadline DateTime?
   chats             chat[]
-  disputes          disputes?
+  disputes          disputes[] // One job can have multiple disputes
+  payment           payments? // One-to-one payment tracking
   customer          customers          @relation(fields: [customer_id], references: [id])
   service_provider  service_providers  @relation(fields: [provider_id], references: [id])
   service           services           @relation(fields: [service_id], references: [id])
@@ -156,6 +163,9 @@ model chat {
   deleted_at            DateTime?
   deleted_by            Int?
   is_deleted            Boolean                 @default(false)
+  lsm_invited           Boolean                 @default(false) // Dispute filed, LSM invited to join
+  lsm_joined            Boolean                 @default(false) // LSM accepted and joined chat
+  lsm_joined_at         DateTime? // When LSM joined
   customer              customers               @relation(fields: [customer_id], references: [id])
   job                   jobs?                   @relation(fields: [job_id], references: [id])
   local_service_manager local_service_managers? @relation(fields: [lsm_id], references: [id])
@@ -172,6 +182,23 @@ model messages {
   message      String?
   created_at   DateTime    @default(now())
   chat         chat        @relation(fields: [chat_id], references: [id])
+}
+
+model payments {
+  id         Int           @id @default(autoincrement())
+  job_id     Int           @unique // One payment per job
+  job        jobs          @relation(fields: [job_id], references: [id])
+  amount     Decimal       @default(0.00) @db.Decimal(10, 2)
+  method     String? // cash, card, bank_transfer, online
+  status     PaymentStatus @default(pending)
+  marked_by  Int? // SP user_id who marked payment received
+  marked_at  DateTime? // When payment was marked received
+  notes      String? // SP notes about payment
+  created_at DateTime      @default(now())
+  updated_at DateTime      @updatedAt
+
+  @@index([job_id])
+  @@index([status])
 }
 
 model ratings_feedback {
@@ -202,13 +229,15 @@ model notifications {
 
 model disputes {
   id             Int           @id @default(autoincrement())
-  job_id         Int           @unique
+  job_id         Int // Removed @unique to allow multiple disputes per job
   raised_by_type SenderType
   status         DisputeStatus @default(pending)
   resolved_by    Int?
   resolved_at    DateTime?
   created_at     DateTime      @default(now())
   job            jobs          @relation(fields: [job_id], references: [id])
+
+  @@index([job_id])
 }
 
 model service_search_logs {
@@ -298,6 +327,22 @@ model provider_documents {
   @@index([provider_id])
 }
 
+model ban_requests {
+  id                Int               @id @default(autoincrement())
+  provider_id       Int
+  provider          service_providers @relation(fields: [provider_id], references: [id])
+  requested_by_lsm  Int // LSM user_id who requested the ban
+  reason            String // Why LSM wants this provider banned
+  status            String            @default("pending") // pending, approved, rejected
+  admin_reviewed_by Int? // Admin user_id who reviewed
+  admin_reviewed_at DateTime?
+  admin_notes       String? // Admin's decision notes
+  created_at        DateTime          @default(now())
+
+  @@index([provider_id])
+  @@index([status])
+}
+
 enum Role {
   customer
   service_provider
@@ -362,4 +407,16 @@ enum MessageType {
 enum DisputeStatus {
   pending
   resolved
+}
+
+enum CustomerStatus {
+  active
+  banned
+  suspended
+}
+
+enum PaymentStatus {
+  pending
+  received
+  disputed
 }
