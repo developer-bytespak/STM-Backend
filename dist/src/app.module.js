@@ -19,7 +19,7 @@ const customers_module_1 = require("./modules/customers/customers.module");
 const providers_module_1 = require("./modules/providers/providers.module");
 const lsm_module_1 = require("./modules/lsm/lsm.module");
 const provider_onboarding_module_1 = require("./modules/provider-onboarding/provider-onboarding.module");
-const job_management_module_1 = require("./modules/job-management/job-management.module");
+const jobs_module_1 = require("./modules/jobs/jobs.module");
 const chat_module_1 = require("./modules/chat/chat.module");
 const notifications_module_1 = require("./modules/notifications/notifications.module");
 const search_matching_module_1 = require("./modules/services/search-matching.module");
@@ -27,7 +27,7 @@ const payment_module_1 = require("./modules/payments/payment.module");
 const ratings_feedback_module_1 = require("./modules/ratings/ratings-feedback.module");
 const analytics_module_1 = require("./modules/analytics/analytics.module");
 const office_real_estate_module_1 = require("./modules/office-spaces/office-real-estate.module");
-const admin_dashboard_module_1 = require("./modules/admin/admin-dashboard.module");
+const admin_module_1 = require("./modules/admin/admin.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -49,7 +49,7 @@ exports.AppModule = AppModule = __decorate([
             providers_module_1.ProvidersModule,
             lsm_module_1.LsmModule,
             provider_onboarding_module_1.ProviderOnboardingModule,
-            job_management_module_1.JobManagementModule,
+            jobs_module_1.JobsModule,
             chat_module_1.ChatModule,
             notifications_module_1.NotificationsModule,
             search_matching_module_1.ServicesModule,
@@ -57,7 +57,7 @@ exports.AppModule = AppModule = __decorate([
             ratings_feedback_module_1.RatingsModule,
             analytics_module_1.AnalyticsModule,
             office_real_estate_module_1.OfficeSpacesModule,
-            admin_dashboard_module_1.AdminModule,
+            admin_module_1.AdminModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService, prisma_service_1.PrismaService, common_1.Logger],

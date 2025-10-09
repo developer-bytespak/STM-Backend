@@ -76,8 +76,11 @@ let CustomersService = class CustomersService {
                 });
                 const customer = await prisma.customers.create({
                     data: {
-                        user_id: user.id,
+                        user: {
+                            connect: { id: user.id }
+                        },
                         address: createCustomerDto.address,
+                        region: createCustomerDto.region,
                     },
                     include: {
                         user: true,

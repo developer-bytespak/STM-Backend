@@ -18,7 +18,7 @@ async function bootstrap() {
     app.getHttpAdapter().getInstance().setTimeout?.(12000);
     const port = process.env.PORT ? Number(process.env.PORT) : 8000;
     await app.listen(port);
-    console.log('STM Bakcend running at port  http://localhost:8000');
+    console.log('STM Backend running at port  http://localhost:8000');
 }
 bootstrap();
 //# sourceMappingURL=main.js.map

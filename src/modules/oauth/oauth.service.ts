@@ -156,8 +156,11 @@ export class OAuthService {
           
           await prisma.customers.create({
             data: {
-              user_id: newUser.id,
+              user: {
+                connect: { id: newUser.id }
+              },
               address: address || 'Not provided', // Use provided address or default
+              region: region, // Save region for LSM assignment and analytics
               zipcode: zipcode || null, // Optional field
             },
           });

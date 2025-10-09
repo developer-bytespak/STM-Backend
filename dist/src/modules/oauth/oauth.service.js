@@ -118,8 +118,11 @@ let OAuthService = class OAuthService {
                     }
                     await prisma.customers.create({
                         data: {
-                            user_id: newUser.id,
+                            user: {
+                                connect: { id: newUser.id }
+                            },
                             address: address || 'Not provided',
+                            region: region,
                             zipcode: zipcode || null,
                         },
                     });

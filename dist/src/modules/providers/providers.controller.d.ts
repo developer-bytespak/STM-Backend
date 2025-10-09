@@ -1,26 +1,34 @@
 import { ProvidersService } from './providers.service';
-import { CreateProviderDto } from './dto/create-provider.dto';
-import { UpdateProviderDto } from './dto/update-provider.dto';
-import { ProviderManagementDto } from './dto/provider-management.dto';
-import { ProviderFiltersDto } from './dto/provider-filters.dto';
-import { ProviderResponseDto } from './dto/provider-response.dto';
-import { CreateServiceDto } from './dto/create-service.dto';
+import { RequestServiceDto } from './dto/request-service.dto';
+import { AddServiceDto } from './dto/add-service.dto';
 export declare class ProvidersController {
     private readonly providersService;
     constructor(providersService: ProvidersService);
-    create(createProviderDto: CreateProviderDto, documents?: any[]): Promise<ProviderResponseDto>;
-    findAll(filters: ProviderFiltersDto): Promise<{
-        data: ProviderResponseDto[];
-        total: number;
-        page: number;
-        limit: number;
+    requestNewService(userId: number, dto: RequestServiceDto): Promise<{
+        id: number;
+        serviceName: string;
+        category: string;
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        lsm_approved: boolean;
+        admin_approved: boolean;
+        created_at: Date;
     }>;
-    getProviderStats(): Promise<any>;
-    findByUserId(userId: number): Promise<ProviderResponseDto>;
-    findOne(id: number): Promise<ProviderResponseDto>;
-    update(id: number, updateProviderDto: UpdateProviderDto, documents?: any[]): Promise<ProviderResponseDto>;
-    updateManagement(id: number, managementDto: ProviderManagementDto): Promise<ProviderResponseDto>;
-    remove(id: number): Promise<void>;
-    getProviderServices(id: number): Promise<any>;
-    createService(id: number, createServiceDto: CreateServiceDto, documents?: any[]): Promise<any>;
+    getMyServiceRequests(userId: number): Promise<{
+        id: number;
+        serviceName: string;
+        category: string;
+        description: string;
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        lsm_approved: boolean;
+        admin_approved: boolean;
+        lsm_rejection_reason: string;
+        admin_rejection_reason: string;
+        created_at: Date;
+    }[]>;
+    addService(userId: number, dto: AddServiceDto): Promise<{
+        message: string;
+        serviceId: number;
+        serviceName: string;
+        category: string;
+    }>;
 }

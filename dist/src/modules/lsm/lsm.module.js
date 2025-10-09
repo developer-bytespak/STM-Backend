@@ -8,15 +8,17 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LsmModule = void 0;
 const common_1 = require("@nestjs/common");
+const lsm_controller_1 = require("./lsm.controller");
+const lsm_service_1 = require("./lsm.service");
+const prisma_service_1 = require("../../../prisma/prisma.service");
 let LsmModule = class LsmModule {
 };
 exports.LsmModule = LsmModule;
 exports.LsmModule = LsmModule = __decorate([
     (0, common_1.Module)({
-        imports: [],
-        controllers: [],
-        providers: [],
-        exports: [],
+        controllers: [lsm_controller_1.LsmController],
+        providers: [lsm_service_1.LsmService, prisma_service_1.PrismaService],
+        exports: [lsm_service_1.LsmService],
     })
 ], LsmModule);
 //# sourceMappingURL=lsm.module.js.map

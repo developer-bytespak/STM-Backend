@@ -26,6 +26,6 @@ async function bootstrap() {
   await app.listen(port);
   // Use console to ensure message appears even with reduced Nest logger levels
   // eslint-disable-next-line no-console
-  console.log('STM Bakcend running at port  http://localhost:8000');
+  console.log('STM Backend running at port  http://localhost:8000');
 }
 bootstrap();
