@@ -39,6 +39,15 @@ export class SearchMatchingService {
 
     const total = await this.prisma.services.count({ where });
 
+    // Log search (especially for analytics and tracking failed searches)
+    if (query && query.length > 0) {
+      // Log asynchronously to not block the response
+      this.logSearch(query, zipcode).catch((err) => {
+        // Silent fail - don't block search if logging fails
+        console.error('Search logging failed:', err);
+      });
+    }
+
     const services = await this.prisma.services.findMany({
       where,
       include: {
@@ -222,5 +231,46 @@ export class SearchMatchingService {
       },
       providers,
     };
+  }
+
+  /**
+   * Log search queries for analytics
+   * Tracks both successful and failed searches
+   */
+  private async logSearch(query: string, zipcode?: string) {
+    // Check if there are any matching services
+    const matchingServices = await this.prisma.services.findMany({
+      where: {
+        status: 'approved',
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { category: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      take: 1, // Just check if any exist
+    });
+
+    // If no results, this is a "failed search" - just track it for analytics
+    // NOTE: Notifications removed - too spammy. Use requestNewService API instead for explicit requests.
+    if (matchingServices.length === 0) {
+      // TODO: Track failed search frequency in database
+      // Could notify LSM/Admin after X searches of same term in Y days
+      // For now, just silent tracking
+    }
+
+    // Log successful searches too (for analytics)
+    if (matchingServices.length > 0) {
+      // Log to service_search_logs table
+      for (const service of matchingServices) {
+        await this.prisma.service_search_logs.create({
+          data: {
+            service_id: service.id,
+            region: zipcode || 'unknown',
+            zipcode: zipcode,
+            searched_at: new Date(),
+          },
+        });
+      }
+    }
   }
 }

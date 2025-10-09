@@ -2753,4 +2753,111 @@ export class AdminService {
       regions: regions.sort((a, b) => b.stats.totalRevenue - a.stats.totalRevenue),
     };
   }
+
+  // ==================== PLATFORM SETTINGS ====================
+
+  /**
+   * Get platform settings
+   */
+  async getSettings() {
+    const settings = await this.prisma.platform_settings.findFirst({
+      orderBy: { id: 'desc' },
+    });
+
+    if (!settings) {
+      // Return default values if no settings exist yet
+      return {
+        responseDeadlineMinutes: 60,
+        warningThreshold: 3,
+        popularityThreshold: 10,
+        cancellationFeePercentage: 25,
+        defaultInPersonVisitCost: 50.0,
+        updatedAt: new Date(),
+        message: 'Using default settings. No settings record found in database.',
+      };
+    }
+
+    return {
+      id: settings.id,
+      responseDeadlineMinutes: settings.response_deadline_mins,
+      warningThreshold: settings.warning_threshold,
+      popularityThreshold: settings.popularity_threshold,
+      cancellationFeePercentage: Number(settings.cancellation_fee_percentage),
+      defaultInPersonVisitCost: Number(settings.default_in_person_visit_cost),
+      updatedBy: settings.updated_by,
+      updatedAt: settings.updated_at,
+      createdAt: settings.created_at,
+    };
+  }
+
+  /**
+   * Update platform settings
+   */
+  async updateSettings(adminUserId: number, dto: any) {
+    // Get current settings (if any)
+    const currentSettings = await this.prisma.platform_settings.findFirst({
+      orderBy: { id: 'desc' },
+    });
+
+    // Prepare update data (only include fields that were provided)
+    const updateData: any = {
+      updated_by: adminUserId,
+    };
+
+    if (dto.responseDeadlineMinutes !== undefined) {
+      updateData.response_deadline_mins = dto.responseDeadlineMinutes;
+    } else if (currentSettings) {
+      updateData.response_deadline_mins = currentSettings.response_deadline_mins;
+    }
+
+    if (dto.warningThreshold !== undefined) {
+      updateData.warning_threshold = dto.warningThreshold;
+    } else if (currentSettings) {
+      updateData.warning_threshold = currentSettings.warning_threshold;
+    }
+
+    if (dto.popularityThreshold !== undefined) {
+      updateData.popularity_threshold = dto.popularityThreshold;
+    } else if (currentSettings) {
+      updateData.popularity_threshold = currentSettings.popularity_threshold;
+    }
+
+    if (dto.cancellationFeePercentage !== undefined) {
+      updateData.cancellation_fee_percentage = dto.cancellationFeePercentage;
+    } else if (currentSettings) {
+      updateData.cancellation_fee_percentage = currentSettings.cancellation_fee_percentage;
+    }
+
+    if (dto.defaultInPersonVisitCost !== undefined) {
+      updateData.default_in_person_visit_cost = dto.defaultInPersonVisitCost;
+    } else if (currentSettings) {
+      updateData.default_in_person_visit_cost = currentSettings.default_in_person_visit_cost;
+    }
+
+    // Create new settings record (versioned history approach)
+    const settings = await this.prisma.platform_settings.create({
+      data: {
+        response_deadline_mins: updateData.response_deadline_mins || 60,
+        warning_threshold: updateData.warning_threshold || 3,
+        popularity_threshold: updateData.popularity_threshold || 10,
+        cancellation_fee_percentage: updateData.cancellation_fee_percentage || 25,
+        default_in_person_visit_cost: updateData.default_in_person_visit_cost || 50.0,
+        updated_by: adminUserId,
+      },
+    });
+
+    return {
+      message: 'Settings updated successfully',
+      settings: {
+        id: settings.id,
+        responseDeadlineMinutes: settings.response_deadline_mins,
+        warningThreshold: settings.warning_threshold,
+        popularityThreshold: settings.popularity_threshold,
+        cancellationFeePercentage: Number(settings.cancellation_fee_percentage),
+        defaultInPersonVisitCost: Number(settings.default_in_person_visit_cost),
+        updatedBy: settings.updated_by,
+        updatedAt: settings.updated_at,
+      },
+    };
+  }
 }
