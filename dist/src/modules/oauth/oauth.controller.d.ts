@@ -45,12 +45,12 @@ export declare class OAuthController {
     }>;
     updateMe(userId: number, body: UpdateProfileDto): Promise<{
         id: number;
-        updated_at: Date;
         email: string;
-        role: import(".prisma/client").$Enums.Role;
         first_name: string;
         last_name: string;
         phone_number: string;
+        role: import(".prisma/client").$Enums.Role;
         profile_picture: string;
+        updated_at: Date;
     }>;
 }

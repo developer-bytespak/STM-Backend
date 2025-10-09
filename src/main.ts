@@ -7,6 +7,9 @@ async function bootstrap() {
     logger: ['error', 'warn'] // reduce Nest logs
   });
 
+  // Set global prefix for all routes
+  app.setGlobalPrefix('api');
+
   // Enable CORS for frontend
   app.enableCors({
     origin: ['http://localhost:3000', 'http://127.0.0.1:3000'], // Allow frontend origins
