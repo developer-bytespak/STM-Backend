@@ -70,7 +70,7 @@ npm run start:dev
 
 ### Base URL
 ```
-http://localhost:8000/api/homepage/search
+http://localhost:8000/homepage/search
 ```
 
 ### Endpoints Summary
@@ -87,13 +87,13 @@ http://localhost:8000/api/homepage/search
 
 ### 1️⃣ Service Search
 
-**Endpoint:** `GET /api/homepage/search/services`
+**Endpoint:** `GET /homepage/search/services`
 
 **Purpose:** Search for categories and services (autocomplete)
 
 #### Test Case 1: Search "clean"
 ```http
-GET http://localhost:8000/api/homepage/search/services?query=clean
+GET http://localhost:8000/homepage/search/services?query=clean
 ```
 
 **Expected Response:**
@@ -140,7 +140,7 @@ GET http://localhost:8000/api/homepage/search/services?query=clean
 
 #### Test Case 2: Search "engineer"
 ```http
-GET http://localhost:8000/api/homepage/search/services?query=eng
+GET http://localhost:8000/homepage/search/services?query=eng
 ```
 
 **Expected Response:**
@@ -167,7 +167,7 @@ GET http://localhost:8000/api/homepage/search/services?query=eng
 
 #### Test Case 3: Search "plumb"
 ```http
-GET http://localhost:8000/api/homepage/search/services?query=plumb
+GET http://localhost:8000/homepage/search/services?query=plumb
 ```
 
 **Expected Response:**
@@ -191,13 +191,13 @@ GET http://localhost:8000/api/homepage/search/services?query=plumb
 
 **Next Step:** User selects "Plumber" → Call API #2 to get granular services:
 ```http
-GET http://localhost:8000/api/homepage/search/services/category/Plumber
+GET http://localhost:8000/homepage/search/services/category/Plumber
 ```
 ```
 
 #### Test Case 4: Invalid Query (too short)
 ```http
-GET http://localhost:8000/api/homepage/search/services?query=ab
+GET http://localhost:8000/homepage/search/services?query=ab
 ```
 
 **Expected Response:**
@@ -215,13 +215,13 @@ GET http://localhost:8000/api/homepage/search/services?query=ab
 
 ### 2️⃣ Get Category Services
 
-**Endpoint:** `GET /api/homepage/search/services/category/:category`
+**Endpoint:** `GET /homepage/search/services/category/:category`
 
 **Purpose:** Get all services under a category (when user clicks category)
 
 #### Test Case 1: Interior Cleaning
 ```http
-GET http://localhost:8000/api/homepage/search/services/category/Interior%20Cleaning
+GET http://localhost:8000/homepage/search/services/category/Interior%20Cleaning
 ```
 
 **Expected Response:**
@@ -248,7 +248,7 @@ GET http://localhost:8000/api/homepage/search/services/category/Interior%20Clean
 
 #### Test Case 2: Exterior Cleaning
 ```http
-GET http://localhost:8000/api/homepage/search/services/category/Exterior%20Cleaning
+GET http://localhost:8000/homepage/search/services/category/Exterior%20Cleaning
 ```
 
 **Expected Response:**
@@ -295,7 +295,7 @@ GET http://localhost:8000/api/homepage/search/services/category/Exterior%20Clean
 
 #### Test Case 3: Standalone Service (Engineer)
 ```http
-GET http://localhost:8000/api/homepage/search/services/category/Engineer
+GET http://localhost:8000/homepage/search/services/category/Engineer
 ```
 
 **Expected Response:**
@@ -317,7 +317,7 @@ GET http://localhost:8000/api/homepage/search/services/category/Engineer
 
 #### Test Case 4: Category Not Found
 ```http
-GET http://localhost:8000/api/homepage/search/services/category/NonExistent
+GET http://localhost:8000/homepage/search/services/category/NonExistent
 ```
 
 **Expected Response:**
@@ -335,13 +335,13 @@ GET http://localhost:8000/api/homepage/search/services/category/NonExistent
 
 ### 3️⃣ Location Search
 
-**Endpoint:** `GET /api/homepage/search/locations`
+**Endpoint:** `GET /homepage/search/locations`
 
 **Purpose:** Search for ZIP codes (autocomplete)
 
 #### Test Case 1: Search "75" (Dallas area)
 ```http
-GET http://localhost:8000/api/homepage/search/locations?query=75&limit=10
+GET http://localhost:8000/homepage/search/locations?query=75&limit=10
 ```
 
 **Expected Response:**
@@ -363,7 +363,7 @@ GET http://localhost:8000/api/homepage/search/locations?query=75&limit=10
 
 #### Test Case 2: Search "97" (Oregon area)
 ```http
-GET http://localhost:8000/api/homepage/search/locations?query=97&limit=5
+GET http://localhost:8000/homepage/search/locations?query=97&limit=5
 ```
 
 **Expected Response:**
@@ -393,7 +393,7 @@ GET http://localhost:8000/api/homepage/search/locations?query=97&limit=5
 
 #### Test Case 3: No Results
 ```http
-GET http://localhost:8000/api/homepage/search/locations?query=99999&limit=10
+GET http://localhost:8000/homepage/search/locations?query=99999&limit=10
 ```
 
 **Expected Response:**
@@ -406,7 +406,7 @@ GET http://localhost:8000/api/homepage/search/locations?query=99999&limit=10
 
 #### Test Case 4: Invalid Query (too short)
 ```http
-GET http://localhost:8000/api/homepage/search/locations?query=7
+GET http://localhost:8000/homepage/search/locations?query=7
 ```
 
 **Expected Response:**
@@ -424,13 +424,13 @@ GET http://localhost:8000/api/homepage/search/locations?query=7
 
 ### 4️⃣ Provider Search
 
-**Endpoint:** `POST /api/homepage/search/providers`
+**Endpoint:** `POST /homepage/search/providers`
 
 **Purpose:** Find providers by service name and ZIP code
 
 #### Test Case 1: Basic Search (House Cleaning in Dallas)
 ```http
-POST http://localhost:8000/api/homepage/search/providers
+POST http://localhost:8000/homepage/search/providers
 Content-Type: application/json
 
 {
@@ -506,7 +506,7 @@ Content-Type: application/json
 
 #### Test Case 2: With Filters (Min Rating)
 ```http
-POST http://localhost:8000/api/homepage/search/providers
+POST http://localhost:8000/homepage/search/providers
 Content-Type: application/json
 
 {
@@ -568,7 +568,7 @@ Content-Type: application/json
 
 #### Test Case 3: With Max Price Filter
 ```http
-POST http://localhost:8000/api/homepage/search/providers
+POST http://localhost:8000/homepage/search/providers
 Content-Type: application/json
 
 {
@@ -609,7 +609,7 @@ Content-Type: application/json
 
 #### Test Case 4: No Providers Found
 ```http
-POST http://localhost:8000/api/homepage/search/providers
+POST http://localhost:8000/homepage/search/providers
 Content-Type: application/json
 
 {
@@ -637,7 +637,7 @@ Content-Type: application/json
 
 #### Test Case 5: Service Not Found
 ```http
-POST http://localhost:8000/api/homepage/search/providers
+POST http://localhost:8000/homepage/search/providers
 Content-Type: application/json
 
 {
@@ -821,5 +821,5 @@ All endpoints follow this format:
 
 All files created and module registered. The APIs are ready to test! 🎉
 
-**Start testing with:** Service Search → `GET /api/homepage/search/services?query=clean`
+**Start testing with:** Service Search → `GET /homepage/search/services?query=clean`
 

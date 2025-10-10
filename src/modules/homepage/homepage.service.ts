@@ -130,7 +130,7 @@ export class HomepageService {
         },
       },
       select: {
-        zipcode: true,
+        zipcode: true, // Can be "75001" or "75001 - Dallas, TX"
       },
       distinct: ['zipcode'],
       take: finalLimit,
@@ -143,12 +143,40 @@ export class HomepageService {
 
     if (areas.length > 0) {
       // Use dynamic data from database
-      results = areas.map((area) => ({
-        zipCode: area.zipcode,
-        formattedAddress: area.zipcode, // For now, just ZIP
-        // city: 'TBD',
-        // state: 'TBD',
-        // stateCode: 'TBD',
+      // Parse and deduplicate zipcodes
+      const uniqueZips = new Map<string, string>(); // Map<cleanZipCode, formattedAddress>
+      
+      areas.forEach((area) => {
+        const zipcodeField = area.zipcode;
+        
+        // Parse the zipcode field
+        // Format can be: "75001" or "75001 - Dallas, TX"
+        let cleanZipCode: string;
+        let formattedAddress: string;
+        
+        if (zipcodeField.includes(' - ')) {
+          // Has location data: "75001 - Dallas, TX"
+          cleanZipCode = zipcodeField.split(' - ')[0].trim();
+          formattedAddress = zipcodeField;
+        } else if (zipcodeField.includes('- ')) {
+          // Has location data with no space before dash: "75001- Dallas, TX"
+          cleanZipCode = zipcodeField.split('- ')[0].trim();
+          formattedAddress = cleanZipCode + ' - ' + zipcodeField.split('- ')[1];
+        } else {
+          // Just zipcode: "75001"
+          cleanZipCode = zipcodeField.trim();
+          formattedAddress = cleanZipCode;
+        }
+        
+        // Store first occurrence (deduplicate)
+        if (!uniqueZips.has(cleanZipCode)) {
+          uniqueZips.set(cleanZipCode, formattedAddress);
+        }
+      });
+
+      results = Array.from(uniqueZips.entries()).map(([zipCode, formattedAddress]) => ({
+        zipCode: zipCode,
+        formattedAddress: formattedAddress,
       }));
     } else {
       // Fallback to static test data when no provider areas exist
@@ -216,6 +244,7 @@ export class HomepageService {
     }
 
     // 2. Build where clause for providers
+    // Support both formats: "75001" matches "75001" or "75001 - Dallas, TX"
     const where: any = {
       service_id: serviceRecord.id,
       is_active: true,
@@ -223,7 +252,9 @@ export class HomepageService {
         status: 'active',
         service_areas: {
           some: {
-            zipcode: zipcode,
+            zipcode: {
+              startsWith: zipcode, // Match "75001" in "75001 - Dallas, TX"
+            },
           },
         },
       },
