@@ -9,7 +9,7 @@ const TEST_USERS = [
     last_name: 'Smith',
     phone_number: '555-0101',
     role: 'service_provider' as const,
-    password: 'testpassword123',
+    password: 'Aq123456',
     is_email_verified: true,
   },
   {
@@ -18,7 +18,7 @@ const TEST_USERS = [
     last_name: 'Johnson',
     phone_number: '555-0102',
     role: 'service_provider' as const,
-    password: 'testpassword123',
+    password: 'Aq123456',
     is_email_verified: true,
   },
   {
@@ -27,7 +27,7 @@ const TEST_USERS = [
     last_name: 'Davis',
     phone_number: '555-0103',
     role: 'service_provider' as const,
-    password: 'testpassword123',
+    password: 'Aq123456',
     is_email_verified: true,
   },
   {
@@ -36,7 +36,7 @@ const TEST_USERS = [
     last_name: 'Wilson',
     phone_number: '555-0201',
     role: 'local_service_manager' as const,
-    password: 'testpassword123',
+    password: 'Aq123456',
     is_email_verified: true,
   },
   {
@@ -45,7 +45,7 @@ const TEST_USERS = [
     last_name: 'Brown',
     phone_number: '555-0202',
     role: 'local_service_manager' as const,
-    password: 'testpassword123',
+    password: 'Aq123456',
     is_email_verified: true,
   },
 ];
@@ -210,21 +210,21 @@ async function seedProviderData() {
     console.log('\n📍 Step 4: Creating service areas...');
     const serviceAreas = [
       // Provider 0 (Smith Cleaning) - Oregon area
-      { providerIndex: 0, zipcode: '97301', is_primary: true },
-      { providerIndex: 0, zipcode: '97302', is_primary: false },
-      { providerIndex: 0, zipcode: '97303', is_primary: false },
+      { providerIndex: 0, zipcode: '97301 - Salem, OR', is_primary: true },
+      { providerIndex: 0, zipcode: '97302 - Salem, OR', is_primary: false },
+      { providerIndex: 0, zipcode: '97303 - Salem, OR', is_primary: false },
       
       // Provider 1 (Johnson Plumbing) - Portland area
-      { providerIndex: 1, zipcode: '97201', is_primary: true },
-      { providerIndex: 1, zipcode: '97202', is_primary: false },
-      { providerIndex: 1, zipcode: '97205', is_primary: false },
-      { providerIndex: 1, zipcode: '97210', is_primary: false },
+      { providerIndex: 1, zipcode: '97201 - Portland, OR', is_primary: true },
+      { providerIndex: 1, zipcode: '97202 - Portland, OR', is_primary: false },
+      { providerIndex: 1, zipcode: '97205 - Portland, OR', is_primary: false },
+      { providerIndex: 1, zipcode: '97210 - Portland, OR', is_primary: false },
       
       // Provider 2 (Davis Electric) - Dallas area
-      { providerIndex: 2, zipcode: '75001', is_primary: true },
-      { providerIndex: 2, zipcode: '75002', is_primary: false },
-      { providerIndex: 2, zipcode: '75201', is_primary: false },
-      { providerIndex: 2, zipcode: '75003', is_primary: false },
+      { providerIndex: 2, zipcode: '75001 - Dallas, TX', is_primary: true },
+      { providerIndex: 2, zipcode: '75002 - Dallas, TX', is_primary: false },
+      { providerIndex: 2, zipcode: '75201 - Dallas, TX', is_primary: false },
+      { providerIndex: 2, zipcode: '75003 - Dallas, TX', is_primary: false },
     ];
 
     for (const areaData of serviceAreas) {
