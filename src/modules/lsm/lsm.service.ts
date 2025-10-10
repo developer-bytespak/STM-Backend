@@ -259,6 +259,57 @@ export class LsmService {
   }
 
   /**
+   * Get/view a provider document
+   */
+  async getDocument(userId: number, providerId: number, documentId: number) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!lsm) {
+      throw new NotFoundException('LSM profile not found');
+    }
+
+    // Verify provider is in LSM's region
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Provider not found');
+    }
+
+    if (provider.lsm_id !== lsm.id) {
+      throw new ForbiddenException('This provider is not in your region');
+    }
+
+    // Get document
+    const document = await this.prisma.provider_documents.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    if (document.provider_id !== providerId) {
+      throw new BadRequestException('Document does not belong to this provider');
+    }
+
+    // Return document with base64 data
+    return {
+      id: document.id,
+      fileName: document.file_name,
+      fileType: document.file_type,
+      fileSize: document.file_size,
+      description: document.description,
+      status: document.status,
+      fileData: document.file_path, // This is the base64 data URL
+      createdAt: document.created_at,
+    };
+  }
+
+  /**
    * Handle document verification/rejection
    */
   async handleDocument(
@@ -347,7 +398,7 @@ export class LsmService {
         },
       });
 
-      const MIN_REQUIRED_DOCS = 2;
+      const MIN_REQUIRED_DOCS = 1;
 
       // If all documents verified, notify LSM to approve onboarding
       if (totalDocuments >= MIN_REQUIRED_DOCS && verifiedDocuments === totalDocuments) {
@@ -632,7 +683,7 @@ export class LsmService {
             uploadedAt: doc.created_at,
           })),
         },
-        readyForActivation: totalDocs >= 2 && verifiedDocs === totalDocs,
+        readyForActivation: totalDocs >= 1 && verifiedDocs === totalDocs,
         createdAt: provider.created_at,
       };
     });
@@ -850,8 +901,8 @@ export class LsmService {
     const totalDocs = provider.documents.length;
     const verifiedDocs = provider.documents.filter((d) => d.status === 'verified').length;
 
-    if (totalDocs < 2) {
-      throw new BadRequestException('Provider must have at least 2 documents uploaded');
+    if (totalDocs < 1) {
+      throw new BadRequestException('Provider must have at least 1 document uploaded');
     }
 
     if (verifiedDocs !== totalDocs) {

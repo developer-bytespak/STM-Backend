@@ -252,6 +252,20 @@ export class AdminController {
   }
 
   /**
+   * Get/view a provider document
+   */
+  @Get('providers/:providerId/documents/:documentId')
+  @ApiOperation({ summary: 'Get/view a provider document' })
+  @ApiResponse({ status: 200, description: 'Document retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Provider or document not found' })
+  async getProviderDocument(
+    @Param('providerId', ParseIntPipe) providerId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    return this.adminService.getProviderDocument(providerId, documentId);
+  }
+
+  /**
    * Ban a service provider
    */
   @Post('providers/:id/ban')
