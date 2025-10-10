@@ -23,6 +23,7 @@ import { DocumentActionDto } from './dto/document-action.dto';
 import { SetProviderStatusDto } from './dto/set-provider-status.dto';
 import { RequestBanDto } from './dto/request-ban.dto';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
+import { RejectOnboardingDto } from './dto/reject-onboarding.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -84,13 +85,16 @@ export class LsmController {
   }
 
   /**
-   * Get all providers in region
+   * Get all providers in region with optional status filter
    */
   @Get('providers')
-  @ApiOperation({ summary: 'Get all service providers in LSM region' })
+  @ApiOperation({ summary: 'Get all service providers in LSM region with optional status filter' })
   @ApiResponse({ status: 200, description: 'Providers retrieved successfully' })
-  async getProvidersInRegion(@CurrentUser('id') userId: number) {
-    return this.lsmService.getProvidersInRegion(userId);
+  async getProvidersInRegion(
+    @CurrentUser('id') userId: number,
+    @Query('status') status?: string,
+  ) {
+    return this.lsmService.getProvidersInRegion(userId, status);
   }
 
   /**
@@ -181,6 +185,24 @@ export class LsmController {
     @Param('id', ParseIntPipe) providerId: number,
   ) {
     return this.lsmService.approveOnboarding(userId, providerId);
+  }
+
+  /**
+   * Reject provider onboarding application
+   */
+  @Post('providers/:id/reject-onboarding')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject provider onboarding application' })
+  @ApiResponse({ status: 200, description: 'Provider onboarding rejected successfully' })
+  @ApiResponse({ status: 400, description: 'Provider is not in pending status' })
+  @ApiResponse({ status: 403, description: 'Provider not in your region' })
+  @ApiResponse({ status: 404, description: 'Provider not found' })
+  async rejectOnboarding(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) providerId: number,
+    @Body() dto: RejectOnboardingDto,
+  ) {
+    return this.lsmService.rejectOnboarding(userId, providerId, dto);
   }
 
   /**
