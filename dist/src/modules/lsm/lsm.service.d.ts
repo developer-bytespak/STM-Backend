@@ -50,8 +50,8 @@ export declare class LsmService {
         };
         serviceAreas: string[];
         services: {
-            category: string;
             name: string;
+            category: string;
         }[];
         documentCount: number;
         jobCount: number;
@@ -361,9 +361,9 @@ export declare class LsmService {
                 id: number;
                 businessName: string;
                 user: {
+                    email: string;
                     first_name: string;
                     last_name: string;
-                    email: string;
                 };
             };
             lsmApproved: boolean;
@@ -379,93 +379,6 @@ export declare class LsmService {
             page: number;
             limit: number;
             totalPages: number;
-        };
-    }>;
-    getProviderReviews(lsmUserId: number, providerId: number, filters: {
-        minRating?: number;
-        maxRating?: number;
-        page?: number;
-        limit?: number;
-    }): Promise<{
-        provider: {
-            id: number;
-            businessName: string;
-            rating: number;
-            totalJobs: number;
-        };
-        data: {
-            id: number;
-            rating: number;
-            feedback: string;
-            punctualityRating: number;
-            responseTime: number;
-            customer: {
-                name: string;
-                email: string;
-            };
-            job: {
-                id: number;
-                service: string;
-                category: string;
-                completedAt: Date;
-                price: number;
-            };
-            createdAt: Date;
-        }[];
-        pagination: {
-            total: number;
-            page: number;
-            limit: number;
-            totalPages: number;
-        };
-    }>;
-    getProviderReviewStats(lsmUserId: number, providerId: number): Promise<{
-        provider: {
-            id: number;
-            businessName: string;
-            totalJobs?: undefined;
-        };
-        totalReviews: number;
-        averageRating: number;
-        averagePunctuality: number;
-        averageResponseTime: number;
-        ratingBreakdown: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
-        };
-        percentages: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
-        };
-    } | {
-        provider: {
-            id: number;
-            businessName: string;
-            totalJobs: number;
-        };
-        totalReviews: number;
-        averageRating: number;
-        averagePunctuality: number;
-        averageResponseTime: number;
-        ratingBreakdown: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
-        };
-        percentages: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
         };
     }>;
 }

@@ -30,6 +30,7 @@ const ratings_feedback_module_1 = require("./modules/ratings/ratings-feedback.mo
 const analytics_module_1 = require("./modules/analytics/analytics.module");
 const office_real_estate_module_1 = require("./modules/office-spaces/office-real-estate.module");
 const admin_module_1 = require("./modules/admin/admin.module");
+const homepage_module_1 = require("./modules/homepage/homepage.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -61,6 +62,7 @@ exports.AppModule = AppModule = __decorate([
             analytics_module_1.AnalyticsModule,
             office_real_estate_module_1.OfficeSpacesModule,
             admin_module_1.AdminModule,
+            homepage_module_1.HomepageModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService, prisma_service_1.PrismaService, common_1.Logger, job_timeout_service_1.JobTimeoutService],

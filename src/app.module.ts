@@ -23,6 +23,7 @@ import { RatingsModule } from './modules/ratings/ratings-feedback.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { HomepageModule } from './modules/homepage/homepage.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AdminModule } from './modules/admin/admin.module';
     AnalyticsModule,
     OfficeSpacesModule,
     AdminModule,
+    HomepageModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService, Logger, JobTimeoutService],

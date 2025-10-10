@@ -8,8 +8,8 @@ export declare class ChatService {
         job: {
             id: number;
             service: {
-                category: string;
                 name: string;
+                category: string;
             };
             status: import(".prisma/client").$Enums.JobStatus;
         };
@@ -38,8 +38,8 @@ export declare class ChatService {
         job: {
             id: number;
             service: {
-                category: string;
                 name: string;
+                category: string;
             };
             status: import(".prisma/client").$Enums.JobStatus;
         };

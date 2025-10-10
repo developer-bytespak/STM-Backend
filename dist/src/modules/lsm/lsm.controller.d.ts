@@ -52,8 +52,8 @@ export declare class LsmController {
         };
         serviceAreas: string[];
         services: {
-            category: string;
             name: string;
+            category: string;
         }[];
         documentCount: number;
         jobCount: number;
@@ -345,9 +345,9 @@ export declare class LsmController {
                 id: number;
                 businessName: string;
                 user: {
+                    email: string;
                     first_name: string;
                     last_name: string;
-                    email: string;
                 };
             };
             lsmApproved: boolean;
@@ -363,122 +363,6 @@ export declare class LsmController {
             page: number;
             limit: number;
             totalPages: number;
-        };
-    }>;
-    getDebugInfo(userId: number): Promise<{
-        error: string;
-        lsm?: undefined;
-        totalProvidersAssigned?: undefined;
-        pendingCount?: undefined;
-        allProviders?: undefined;
-        pendingProviders?: undefined;
-    } | {
-        lsm: {
-            id: number;
-            user_id: number;
-            region: string;
-            status: import(".prisma/client").$Enums.LSMStatus;
-        };
-        totalProvidersAssigned: number;
-        pendingCount: number;
-        allProviders: {
-            id: number;
-            user_id: number;
-            name: string;
-            email: string;
-            businessName: string;
-            status: import(".prisma/client").$Enums.ProviderStatus;
-            location: string;
-            createdAt: Date;
-        }[];
-        pendingProviders: {
-            id: number;
-            user_id: number;
-            name: string;
-            businessName: string;
-        }[];
-        error?: undefined;
-    }>;
-    getProviderReviews(userId: number, providerId: number, minRating?: string, maxRating?: string, page?: string, limit?: string): Promise<{
-        provider: {
-            id: number;
-            businessName: string;
-            rating: number;
-            totalJobs: number;
-        };
-        data: {
-            id: number;
-            rating: number;
-            feedback: string;
-            punctualityRating: number;
-            responseTime: number;
-            customer: {
-                name: string;
-                email: string;
-            };
-            job: {
-                id: number;
-                service: string;
-                category: string;
-                completedAt: Date;
-                price: number;
-            };
-            createdAt: Date;
-        }[];
-        pagination: {
-            total: number;
-            page: number;
-            limit: number;
-            totalPages: number;
-        };
-    }>;
-    getProviderReviewStats(userId: number, providerId: number): Promise<{
-        provider: {
-            id: number;
-            businessName: string;
-            totalJobs?: undefined;
-        };
-        totalReviews: number;
-        averageRating: number;
-        averagePunctuality: number;
-        averageResponseTime: number;
-        ratingBreakdown: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
-        };
-        percentages: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
-        };
-    } | {
-        provider: {
-            id: number;
-            businessName: string;
-            totalJobs: number;
-        };
-        totalReviews: number;
-        averageRating: number;
-        averagePunctuality: number;
-        averageResponseTime: number;
-        ratingBreakdown: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
-        };
-        percentages: {
-            5: number;
-            4: number;
-            3: number;
-            2: number;
-            1: number;
         };
     }>;
 }

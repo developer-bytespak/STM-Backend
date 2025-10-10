@@ -7,6 +7,7 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         logger: ['error', 'warn']
     });
+    app.setGlobalPrefix('api');
     app.enableCors({
         origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

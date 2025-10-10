@@ -98,73 +98,6 @@ let LsmController = class LsmController {
             limit: limit ? parseInt(limit) : 20,
         });
     }
-    async getDebugInfo(userId) {
-        const lsm = await this.prisma.local_service_managers.findUnique({
-            where: { user_id: userId },
-            include: {
-                user: true,
-            },
-        });
-        if (!lsm) {
-            return { error: 'LSM profile not found' };
-        }
-        const allProviders = await this.prisma.service_providers.findMany({
-            where: { lsm_id: lsm.id },
-            select: {
-                id: true,
-                user_id: true,
-                business_name: true,
-                status: true,
-                location: true,
-                created_at: true,
-                user: {
-                    select: {
-                        first_name: true,
-                        last_name: true,
-                        email: true,
-                    },
-                },
-            },
-        });
-        const pendingProviders = allProviders.filter((p) => p.status === 'pending');
-        return {
-            lsm: {
-                id: lsm.id,
-                user_id: lsm.user_id,
-                region: lsm.region,
-                status: lsm.status,
-            },
-            totalProvidersAssigned: allProviders.length,
-            pendingCount: pendingProviders.length,
-            allProviders: allProviders.map((p) => ({
-                id: p.id,
-                user_id: p.user_id,
-                name: `${p.user.first_name} ${p.user.last_name}`,
-                email: p.user.email,
-                businessName: p.business_name,
-                status: p.status,
-                location: p.location,
-                createdAt: p.created_at,
-            })),
-            pendingProviders: pendingProviders.map((p) => ({
-                id: p.id,
-                user_id: p.user_id,
-                name: `${p.user.first_name} ${p.user.last_name}`,
-                businessName: p.business_name,
-            })),
-        };
-    }
-    async getProviderReviews(userId, providerId, minRating, maxRating, page, limit) {
-        return this.lsmService.getProviderReviews(userId, providerId, {
-            minRating: minRating ? parseInt(minRating) : undefined,
-            maxRating: maxRating ? parseInt(maxRating) : undefined,
-            page: page ? parseInt(page) : 1,
-            limit: limit ? parseInt(limit) : 20,
-        });
-    }
-    async getProviderReviewStats(userId, providerId) {
-        return this.lsmService.getProviderReviewStats(userId, providerId);
-    }
 };
 exports.LsmController = LsmController;
 __decorate([
@@ -381,43 +314,6 @@ __decorate([
     __metadata("design:paramtypes", [Number, String, String, String]),
     __metadata("design:returntype", Promise)
 ], LsmController.prototype, "getServiceRequestsHistory", null);
-__decorate([
-    (0, common_1.Get)('debug/info'),
-    (0, swagger_1.ApiOperation)({ summary: 'DEBUG: Get LSM info and assigned providers' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: 'Debug info retrieved' }),
-    __param(0, (0, current_user_decorator_1.CurrentUser)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number]),
-    __metadata("design:returntype", Promise)
-], LsmController.prototype, "getDebugInfo", null);
-__decorate([
-    (0, common_1.Get)('providers/:id/reviews'),
-    (0, swagger_1.ApiOperation)({ summary: 'Get all reviews for a provider in your region' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: 'Reviews retrieved successfully' }),
-    (0, swagger_1.ApiResponse)({ status: 403, description: 'Provider not in your region' }),
-    (0, swagger_1.ApiResponse)({ status: 404, description: 'Provider not found' }),
-    __param(0, (0, current_user_decorator_1.CurrentUser)('id')),
-    __param(1, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __param(2, (0, common_1.Query)('minRating')),
-    __param(3, (0, common_1.Query)('maxRating')),
-    __param(4, (0, common_1.Query)('page')),
-    __param(5, (0, common_1.Query)('limit')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Number, String, String, String, String]),
-    __metadata("design:returntype", Promise)
-], LsmController.prototype, "getProviderReviews", null);
-__decorate([
-    (0, common_1.Get)('providers/:id/reviews/stats'),
-    (0, swagger_1.ApiOperation)({ summary: 'Get review statistics for a provider' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: 'Statistics retrieved successfully' }),
-    (0, swagger_1.ApiResponse)({ status: 403, description: 'Provider not in your region' }),
-    (0, swagger_1.ApiResponse)({ status: 404, description: 'Provider not found' }),
-    __param(0, (0, current_user_decorator_1.CurrentUser)('id')),
-    __param(1, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Number]),
-    __metadata("design:returntype", Promise)
-], LsmController.prototype, "getProviderReviewStats", null);
 exports.LsmController = LsmController = __decorate([
     (0, common_1.Controller)('lsm'),
     (0, swagger_1.ApiTags)('lsm'),

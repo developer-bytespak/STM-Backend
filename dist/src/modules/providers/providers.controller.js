@@ -66,20 +66,6 @@ let ProvidersController = class ProvidersController {
             limit: limit ? parseInt(limit) : 20,
         });
     }
-    async getReviews(userId, minRating, maxRating, page, limit) {
-        return this.providersService.getReviews(userId, {
-            minRating: minRating ? parseInt(minRating) : undefined,
-            maxRating: maxRating ? parseInt(maxRating) : undefined,
-            page: page ? parseInt(page) : 1,
-            limit: limit ? parseInt(limit) : 20,
-        });
-    }
-    async getReviewStats(userId) {
-        return this.providersService.getReviewStats(userId);
-    }
-    async getReviewById(userId, reviewId) {
-        return this.providersService.getReviewById(userId, reviewId);
-    }
 };
 exports.ProvidersController = ProvidersController;
 __decorate([
@@ -226,49 +212,6 @@ __decorate([
     __metadata("design:paramtypes", [Number, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ProvidersController.prototype, "getJobs", null);
-__decorate([
-    (0, common_1.Get)('reviews'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_role_enum_1.UserRole.PROVIDER),
-    (0, swagger_1.ApiBearerAuth)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Get all reviews for current provider with filters' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: 'Reviews retrieved successfully' }),
-    __param(0, (0, current_user_decorator_1.CurrentUser)('id')),
-    __param(1, (0, common_1.Query)('minRating')),
-    __param(2, (0, common_1.Query)('maxRating')),
-    __param(3, (0, common_1.Query)('page')),
-    __param(4, (0, common_1.Query)('limit')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, String, String, String, String]),
-    __metadata("design:returntype", Promise)
-], ProvidersController.prototype, "getReviews", null);
-__decorate([
-    (0, common_1.Get)('reviews/stats'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_role_enum_1.UserRole.PROVIDER),
-    (0, swagger_1.ApiBearerAuth)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Get review statistics and rating breakdown' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: 'Statistics retrieved successfully' }),
-    __param(0, (0, current_user_decorator_1.CurrentUser)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number]),
-    __metadata("design:returntype", Promise)
-], ProvidersController.prototype, "getReviewStats", null);
-__decorate([
-    (0, common_1.Get)('reviews/:id'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_role_enum_1.UserRole.PROVIDER),
-    (0, swagger_1.ApiBearerAuth)(),
-    (0, swagger_1.ApiOperation)({ summary: 'Get specific review details' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: 'Review retrieved successfully' }),
-    (0, swagger_1.ApiResponse)({ status: 403, description: 'Not your review' }),
-    (0, swagger_1.ApiResponse)({ status: 404, description: 'Review not found' }),
-    __param(0, (0, current_user_decorator_1.CurrentUser)('id')),
-    __param(1, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Number]),
-    __metadata("design:returntype", Promise)
-], ProvidersController.prototype, "getReviewById", null);
 exports.ProvidersController = ProvidersController = __decorate([
     (0, common_1.Controller)('provider'),
     (0, swagger_1.ApiTags)('providers'),

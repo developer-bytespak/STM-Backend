@@ -31,7 +31,7 @@ const SERVICES_DATA = {
   "Carpenter": [],
   "Garage Door Technician": [],
   "Windshield Technician": [],
-  "Exterior Cleaner": [
+  "Exterior Cleaning": [
     "House/Building Wash",
     "Gutter Cleaning",
     "Roof Cleaning",
@@ -59,14 +59,49 @@ async function seedServices() {
   for (const [category, services] of Object.entries(SERVICES_DATA)) {
     console.log(`📁 Category: ${category}`);
 
+    // CASE 1: Empty category means the category IS the service itself
     if (services.length === 0) {
-      console.log(`   ⚪ No services defined (empty category)\n`);
+      try {
+        // Check if standalone service already exists
+        const existing = await prisma.services.findFirst({
+          where: {
+            name: category,
+            category: category,
+          },
+        });
+
+        if (existing) {
+          console.log(`   ⏭️  ${category} (standalone service - already exists - ID: ${existing.id})`);
+          skippedCount++;
+        } else {
+          // Create standalone service (name = category)
+          const created = await prisma.services.create({
+            data: {
+              name: category,
+              category: category,
+              description: `Professional ${category.toLowerCase()} services`,
+              status: 'approved',
+              is_popular: false,
+              questions_json: null,
+            },
+          });
+
+          console.log(`   ✅ ${category} (standalone service - ID: ${created.id})`);
+          createdCount++;
+        }
+      } catch (error) {
+        console.error(`   ❌ Error creating ${category}:`, error.message);
+        errorCount++;
+      }
+
+      console.log(''); // Empty line between categories
       continue;
     }
 
+    // CASE 2: Category has granular services - create each one
     for (const serviceName of services) {
       try {
-        // Check if service already exists
+        // Check if service already exists (allows same service name in different categories)
         const existing = await prisma.services.findFirst({
           where: {
             name: serviceName,
@@ -80,7 +115,7 @@ async function seedServices() {
           continue;
         }
 
-        // Create service
+        // Create granular service
         const created = await prisma.services.create({
           data: {
             name: serviceName,
@@ -105,6 +140,9 @@ async function seedServices() {
   }
 
   // Summary
+  const emptyCategories = Object.values(SERVICES_DATA).filter(s => s.length === 0).length;
+  const categoriesWithServicesCount = Object.values(SERVICES_DATA).filter(s => s.length > 0).length;
+  
   console.log('═══════════════════════════════════════════════════');
   console.log('🎉 SEEDING COMPLETE!\n');
   console.log(`📊 Summary:`);
@@ -112,7 +150,8 @@ async function seedServices() {
   console.log(`   ⏭️  Skipped:       ${skippedCount} services (already exist)`);
   console.log(`   ❌ Errors:        ${errorCount} services`);
   console.log(`   📂 Total categories: ${Object.keys(SERVICES_DATA).length}`);
-  console.log(`   ⚪ Empty categories: ${Object.values(SERVICES_DATA).filter(s => s.length === 0).length}`);
+  console.log(`   🔹 Standalone services: ${emptyCategories} (category = service)`);
+  console.log(`   🔸 Categories with sub-services: ${categoriesWithServicesCount}`);
   console.log('═══════════════════════════════════════════════════\n');
 
   // Display category statistics
