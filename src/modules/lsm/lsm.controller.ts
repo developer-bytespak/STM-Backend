@@ -94,6 +94,22 @@ export class LsmController {
   }
 
   /**
+   * Get/view a provider document
+   */
+  @Get('providers/:providerId/documents/:documentId')
+  @ApiOperation({ summary: 'Get/view a provider document' })
+  @ApiResponse({ status: 200, description: 'Document retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Provider not in your region' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
+  async getDocument(
+    @CurrentUser('id') userId: number,
+    @Param('providerId', ParseIntPipe) providerId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    return this.lsmService.getDocument(userId, providerId, documentId);
+  }
+
+  /**
    * Verify or reject provider document
    */
   @Post('providers/:providerId/documents/:documentId')

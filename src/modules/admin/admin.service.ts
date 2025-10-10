@@ -1246,6 +1246,45 @@ export class AdminService {
   }
 
   /**
+   * Get/view a provider document
+   */
+  async getProviderDocument(providerId: number, documentId: number) {
+    // Verify provider exists
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Provider not found');
+    }
+
+    // Get document
+    const document = await this.prisma.provider_documents.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    if (document.provider_id !== providerId) {
+      throw new BadRequestException('Document does not belong to this provider');
+    }
+
+    // Return document with base64 data
+    return {
+      id: document.id,
+      fileName: document.file_name,
+      fileType: document.file_type,
+      fileSize: document.file_size,
+      description: document.description,
+      status: document.status,
+      fileData: document.file_path, // This is the base64 data URL
+      createdAt: document.created_at,
+    };
+  }
+
+  /**
    * Ban a service provider (admin final approval)
    */
   async banProvider(userId: number, providerId: number, dto: BanProviderDto) {
