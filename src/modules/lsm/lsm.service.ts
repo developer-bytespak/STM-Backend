@@ -201,7 +201,7 @@ export class LsmService {
   /**
    * Get all providers in LSM's region
    */
-  async getProvidersInRegion(userId: number) {
+  async getProvidersInRegion(userId: number, status?: string) {
     const lsm = await this.prisma.local_service_managers.findUnique({
       where: { user_id: userId },
     });
@@ -210,8 +210,21 @@ export class LsmService {
       throw new NotFoundException('LSM profile not found');
     }
 
+    // Build where clause with optional status filter
+    const whereClause: any = { lsm_id: lsm.id };
+    if (status) {
+      // Validate status is a valid ProviderStatus
+      const validStatuses = ['pending', 'active', 'inactive', 'banned', 'rejected'];
+      if (!validStatuses.includes(status)) {
+        throw new BadRequestException(
+          `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+        );
+      }
+      whereClause.status = status;
+    }
+
     const providers = await this.prisma.service_providers.findMany({
-      where: { lsm_id: lsm.id },
+      where: whereClause,
       include: {
         user: {
           select: {
@@ -242,20 +255,25 @@ export class LsmService {
       orderBy: { created_at: 'desc' },
     });
 
-    return providers.map((provider) => ({
-      id: provider.id,
-      businessName: provider.business_name,
-      status: provider.status,
-      rating: parseFloat(provider.rating.toString()),
-      experience: provider.experience,
-      totalJobs: provider.total_jobs,
-      user: provider.user,
-      serviceAreas: provider.service_areas.map((area) => area.zipcode),
-      services: provider.provider_services.map((ps) => ps.service),
-      documentCount: provider._count.documents,
-      jobCount: provider._count.jobs,
-      created_at: provider.created_at,
-    }));
+    return {
+      total: providers.length,
+      status: status || 'all',
+      providers: providers.map((provider) => ({
+        id: provider.id,
+        businessName: provider.business_name,
+        status: provider.status,
+        rating: parseFloat(provider.rating.toString()),
+        experience: provider.experience,
+        totalJobs: provider.total_jobs,
+        rejectionReason: provider.rejection_reason,
+        user: provider.user,
+        serviceAreas: provider.service_areas.map((area) => area.zipcode),
+        services: provider.provider_services.map((ps) => ps.service),
+        documentCount: provider._count.documents,
+        jobCount: provider._count.jobs,
+        created_at: provider.created_at,
+      })),
+    };
   }
 
   /**
@@ -937,6 +955,86 @@ export class LsmService {
       status: updated.status,
       approvedAt: updated.approved_at,
       message: 'Provider approved and activated successfully',
+    };
+  }
+
+  /**
+   * Reject provider onboarding application
+   * Note: Provider status changes to 'rejected'. They can re-upload documents to change back to 'pending'
+   */
+  async rejectOnboarding(
+    userId: number,
+    providerId: number,
+    dto: { reason: string },
+  ) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!lsm) {
+      throw new NotFoundException('LSM profile not found');
+    }
+
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+      include: {
+        user: true,
+        documents: true,
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Provider not found');
+    }
+
+    if (provider.lsm_id !== lsm.id) {
+      throw new ForbiddenException('This provider is not in your region');
+    }
+
+    if (provider.status !== 'pending') {
+      throw new BadRequestException('Provider is not in pending status');
+    }
+
+    // Update provider status to rejected with reason
+    // Provider can re-upload documents to automatically change back to pending
+    const updated = await this.prisma.service_providers.update({
+      where: { id: providerId },
+      data: {
+        status: 'rejected',
+        rejection_reason: dto.reason,
+      },
+    });
+
+    // Mark all pending/verified documents as rejected so provider knows to re-upload
+    if (provider.documents.length > 0) {
+      await this.prisma.provider_documents.updateMany({
+        where: {
+          provider_id: providerId,
+          status: { in: ['pending', 'verified'] },
+        },
+        data: {
+          status: 'rejected',
+        },
+      });
+    }
+
+    // Notify provider about rejection with clear instructions
+    await this.prisma.notifications.create({
+      data: {
+        recipient_type: 'service_provider',
+        recipient_id: provider.user_id,
+        type: 'system',
+        title: '⚠️ Onboarding Application Rejected',
+        message: `Your service provider application has been rejected. Reason: ${dto.reason}. Please upload new/corrected documents to resubmit your application for review.`,
+      },
+    });
+
+    return {
+      id: updated.id,
+      status: updated.status,
+      rejectionReason: dto.reason,
+      documentsRejected: provider.documents.length,
+      message: 'Provider onboarding rejected. Provider can re-upload documents to resubmit application.',
     };
   }
 

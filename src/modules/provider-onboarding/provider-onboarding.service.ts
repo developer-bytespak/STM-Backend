@@ -76,6 +76,18 @@ export class ProviderOnboardingService {
     const base64File = file.buffer.toString('base64');
     const filePath = `data:${file.mimetype};base64,${base64File}`;
 
+    // If provider was rejected, automatically change status back to pending
+    // This gives them a chance to resubmit after addressing LSM feedback
+    if (user.service_provider.status === 'rejected') {
+      await this.prisma.service_providers.update({
+        where: { id: user.service_provider.id },
+        data: {
+          status: 'pending',
+          // Keep rejection_reason for reference but status is now pending again
+        },
+      });
+    }
+
     // Create document record
     const document = await this.prisma.provider_documents.create({
       data: {
@@ -96,6 +108,10 @@ export class ProviderOnboardingService {
       status: document.status,
       file_size: document.file_size,
       created_at: document.created_at,
+      provider_status_updated: user.service_provider.status === 'rejected' ? 'pending' : null,
+      message: user.service_provider.status === 'rejected' 
+        ? 'Document uploaded successfully. Your application status has been changed to pending for review.'
+        : 'Document uploaded successfully.',
     };
   }
 

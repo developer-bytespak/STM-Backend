@@ -376,6 +376,7 @@ export class ProvidersService {
     const totalDocs = provider.documents.length;
     const verifiedDocs = provider.documents.filter((d) => d.status === 'verified').length;
     const pendingDocs = provider.documents.filter((d) => d.status === 'pending').length;
+    const rejectedDocs = provider.documents.filter((d) => d.status === 'rejected').length;
     const canDeactivate = provider.jobs.length === 0; // No active jobs
 
     return {
@@ -399,6 +400,7 @@ export class ProvidersService {
         canDeactivate,
         activeJobsCount: provider.jobs.length,
         warnings: provider.warnings,
+        rejectionReason: provider.rejection_reason, // LSM feedback if onboarding rejected
       },
       services: provider.provider_services.map((ps) => ({
         id: ps.service.id,
@@ -413,6 +415,7 @@ export class ProvidersService {
         total: totalDocs,
         verified: verifiedDocs,
         pending: pendingDocs,
+        rejected: rejectedDocs,
         list: provider.documents.map((doc) => ({
           id: doc.id,
           fileName: doc.file_name,
