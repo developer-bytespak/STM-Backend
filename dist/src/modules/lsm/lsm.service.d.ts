@@ -16,9 +16,9 @@ export declare class LsmService {
             id: number;
             businessName: string;
             user: {
-                email: string;
                 first_name: string;
                 last_name: string;
+                email: string;
                 phone_number: string;
             };
         };
@@ -43,9 +43,9 @@ export declare class LsmService {
         experience: number;
         totalJobs: number;
         user: {
-            email: string;
             first_name: string;
             last_name: string;
+            email: string;
             phone_number: string;
         };
         serviceAreas: string[];

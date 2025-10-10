@@ -1,4 +1,5 @@
 import { LsmService } from './lsm.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { RejectServiceRequestDto } from './dto/reject-service-request.dto';
 import { DocumentActionDto } from './dto/document-action.dto';
 import { SetProviderStatusDto } from './dto/set-provider-status.dto';
@@ -6,7 +7,8 @@ import { RequestBanDto } from './dto/request-ban.dto';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 export declare class LsmController {
     private readonly lsmService;
-    constructor(lsmService: LsmService);
+    private readonly prisma;
+    constructor(lsmService: LsmService, prisma: PrismaService);
     getPendingServiceRequests(userId: number): Promise<{
         id: number;
         serviceName: string;
@@ -16,9 +18,9 @@ export declare class LsmController {
             id: number;
             businessName: string;
             user: {
-                email: string;
                 first_name: string;
                 last_name: string;
+                email: string;
                 phone_number: string;
             };
         };
@@ -43,9 +45,9 @@ export declare class LsmController {
         experience: number;
         totalJobs: number;
         user: {
-            email: string;
             first_name: string;
             last_name: string;
+            email: string;
             phone_number: string;
         };
         serviceAreas: string[];

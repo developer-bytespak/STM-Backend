@@ -1700,4 +1700,232 @@ export class LsmService {
       },
     };
   }
+
+  // ==================== REVIEW MANAGEMENT ====================
+
+  /**
+   * Get all reviews for a specific provider (paginated)
+   */
+  async getProviderReviews(
+    lsmUserId: number,
+    providerId: number,
+    filters: { minRating?: number; maxRating?: number; page?: number; limit?: number },
+  ) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: lsmUserId },
+    });
+
+    if (!lsm) {
+      throw new NotFoundException('LSM profile not found');
+    }
+
+    // Verify provider is in LSM's region
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Provider not found');
+    }
+
+    if (provider.lsm_id !== lsm.id) {
+      throw new ForbiddenException('Provider is not in your region');
+    }
+
+    const { minRating, maxRating, page = 1, limit = 20 } = filters;
+    const finalLimit = Math.min(limit, 100);
+
+    const where: any = {
+      provider_id: providerId,
+    };
+
+    // Filter by rating range
+    if (minRating !== undefined || maxRating !== undefined) {
+      where.rating = {};
+      if (minRating !== undefined) {
+        where.rating.gte = minRating;
+      }
+      if (maxRating !== undefined) {
+        where.rating.lte = maxRating;
+      }
+    }
+
+    const [total, reviews] = await Promise.all([
+      this.prisma.ratings_feedback.count({ where }),
+      this.prisma.ratings_feedback.findMany({
+        where,
+        include: {
+          customer: {
+            include: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          job: {
+            select: {
+              id: true,
+              service: {
+                select: {
+                  name: true,
+                  category: true,
+                },
+              },
+              completed_at: true,
+              price: true,
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * finalLimit,
+        take: finalLimit,
+      }),
+    ]);
+
+    return {
+      provider: {
+        id: provider.id,
+        businessName: provider.business_name,
+        rating: Number(provider.rating),
+        totalJobs: provider.total_jobs,
+      },
+      data: reviews.map((review) => ({
+        id: review.id,
+        rating: review.rating,
+        feedback: review.feedback,
+        punctualityRating: review.punctuality_rating,
+        responseTime: review.response_time,
+        customer: {
+          name: `${review.customer.user.first_name} ${review.customer.user.last_name}`,
+          email: review.customer.user.email,
+        },
+        job: {
+          id: review.job.id,
+          service: review.job.service.name,
+          category: review.job.service.category,
+          completedAt: review.job.completed_at,
+          price: Number(review.job.price),
+        },
+        createdAt: review.created_at,
+      })),
+      pagination: {
+        total,
+        page,
+        limit: finalLimit,
+        totalPages: Math.ceil(total / finalLimit),
+      },
+    };
+  }
+
+  /**
+   * Get review statistics for a provider
+   */
+  async getProviderReviewStats(lsmUserId: number, providerId: number) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: lsmUserId },
+    });
+
+    if (!lsm) {
+      throw new NotFoundException('LSM profile not found');
+    }
+
+    // Verify provider is in LSM's region
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+      include: {
+        feedbacks: {
+          select: {
+            rating: true,
+            punctuality_rating: true,
+            response_time: true,
+          },
+        },
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Provider not found');
+    }
+
+    if (provider.lsm_id !== lsm.id) {
+      throw new ForbiddenException('Provider is not in your region');
+    }
+
+    const totalReviews = provider.feedbacks.length;
+
+    if (totalReviews === 0) {
+      return {
+        provider: {
+          id: provider.id,
+          businessName: provider.business_name,
+        },
+        totalReviews: 0,
+        averageRating: 0,
+        averagePunctuality: 0,
+        averageResponseTime: 0,
+        ratingBreakdown: {
+          5: 0,
+          4: 0,
+          3: 0,
+          2: 0,
+          1: 0,
+        },
+        percentages: {
+          5: 0,
+          4: 0,
+          3: 0,
+          2: 0,
+          1: 0,
+        },
+      };
+    }
+
+    // Calculate averages
+    const totalRating = provider.feedbacks.reduce((sum, f) => sum + (f.rating || 0), 0);
+    const totalPunctuality = provider.feedbacks.reduce(
+      (sum, f) => sum + (f.punctuality_rating || 0),
+      0,
+    );
+    const totalResponseTime = provider.feedbacks.reduce(
+      (sum, f) => sum + (f.response_time || 0),
+      0,
+    );
+
+    const averageRating = totalRating / totalReviews;
+    const averagePunctuality = totalPunctuality / totalReviews;
+    const averageResponseTime = totalResponseTime / totalReviews;
+
+    // Rating breakdown
+    const ratingBreakdown = {
+      5: provider.feedbacks.filter((f) => f.rating === 5).length,
+      4: provider.feedbacks.filter((f) => f.rating === 4).length,
+      3: provider.feedbacks.filter((f) => f.rating === 3).length,
+      2: provider.feedbacks.filter((f) => f.rating === 2).length,
+      1: provider.feedbacks.filter((f) => f.rating === 1).length,
+    };
+
+    return {
+      provider: {
+        id: provider.id,
+        businessName: provider.business_name,
+        totalJobs: provider.total_jobs,
+      },
+      totalReviews,
+      averageRating: Number(averageRating.toFixed(2)),
+      averagePunctuality: Number(averagePunctuality.toFixed(2)),
+      averageResponseTime: Math.round(averageResponseTime),
+      ratingBreakdown,
+      percentages: {
+        5: Math.round((ratingBreakdown[5] / totalReviews) * 100),
+        4: Math.round((ratingBreakdown[4] / totalReviews) * 100),
+        3: Math.round((ratingBreakdown[3] / totalReviews) * 100),
+        2: Math.round((ratingBreakdown[2] / totalReviews) * 100),
+        1: Math.round((ratingBreakdown[1] / totalReviews) * 100),
+      },
+    };
+  }
 }

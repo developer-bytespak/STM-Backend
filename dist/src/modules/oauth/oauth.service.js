@@ -189,10 +189,39 @@ let OAuthService = class OAuthService {
                             });
                         }
                     }
+                    await prisma.notifications.create({
+                        data: {
+                            recipient_type: 'local_service_manager',
+                            recipient_id: availableLSM.user_id,
+                            type: 'system',
+                            title: 'New Provider Registration',
+                            message: `New service provider "${businessName || firstName + ' ' + lastName}" registered in your region. Review their onboarding application.`,
+                        },
+                    });
                     break;
                 case user_role_enum_1.UserRole.LSM:
                     if (!region) {
                         throw new common_1.BadRequestException('Region is required for LSM registration. Please specify the region.');
+                    }
+                    const existingLSM = await prisma.local_service_managers.findFirst({
+                        where: {
+                            region: region,
+                            status: 'active',
+                        },
+                        include: {
+                            user: {
+                                select: {
+                                    first_name: true,
+                                    last_name: true,
+                                    email: true,
+                                },
+                            },
+                        },
+                    });
+                    if (existingLSM) {
+                        throw new common_1.ConflictException(`An active LSM already exists for region "${region}". ` +
+                            `LSM: ${existingLSM.user.first_name} ${existingLSM.user.last_name} (${existingLSM.user.email}). ` +
+                            `Only one LSM is allowed per region. Please contact admin to replace the existing LSM.`);
                     }
                     await prisma.local_service_managers.create({
                         data: {

@@ -16,6 +16,7 @@ exports.LsmController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const lsm_service_1 = require("./lsm.service");
+const prisma_service_1 = require("../../../prisma/prisma.service");
 const reject_service_request_dto_1 = require("./dto/reject-service-request.dto");
 const document_action_dto_1 = require("./dto/document-action.dto");
 const set_provider_status_dto_1 = require("./dto/set-provider-status.dto");
@@ -27,8 +28,9 @@ const roles_decorator_1 = require("../oauth/decorators/roles.decorator");
 const current_user_decorator_1 = require("../oauth/decorators/current-user.decorator");
 const user_role_enum_1 = require("../users/enums/user-role.enum");
 let LsmController = class LsmController {
-    constructor(lsmService) {
+    constructor(lsmService, prisma) {
         this.lsmService = lsmService;
+        this.prisma = prisma;
     }
     async getPendingServiceRequests(userId) {
         return this.lsmService.getPendingServiceRequests(userId);
@@ -318,6 +320,7 @@ exports.LsmController = LsmController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)(user_role_enum_1.UserRole.LSM),
     (0, swagger_1.ApiBearerAuth)(),
-    __metadata("design:paramtypes", [lsm_service_1.LsmService])
+    __metadata("design:paramtypes", [lsm_service_1.LsmService,
+        prisma_service_1.PrismaService])
 ], LsmController);
 //# sourceMappingURL=lsm.controller.js.map
