@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
+    "postbuild": "echo 'POST BUILD CHECK:' && ls -la && echo 'DIST CONTENTS:' && ls -la dist && echo 'DIST FILES:' && find dist -type f",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "dev": "nest start --watch",
