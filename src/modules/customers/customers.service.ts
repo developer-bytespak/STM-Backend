@@ -148,9 +148,12 @@ export class CustomersService {
           where,
           include: {
             user: true,
-            jobs: {
-              include: {
+            _count: {
+              select: {
+                jobs: true,
                 feedbacks: true,
+                chats: true,
+                service_requests: true,
               }
             }
           },
@@ -161,7 +164,32 @@ export class CustomersService {
         this.prisma.customers.count({ where })
       ]);
 
-      const transformedCustomers = customers.map(customer => this.transformToResponseDto(customer));
+      // Calculate total_spent efficiently using aggregation
+      const customerIds = customers.map(c => c.id);
+      const spendingData = customerIds.length > 0 ? await this.prisma.jobs.groupBy({
+        by: ['customer_id'],
+        where: {
+          customer_id: { in: customerIds },
+          status: 'paid'
+        },
+        _sum: {
+          price: true
+        }
+      }) : [];
+
+      const spendingMap = new Map();
+      spendingData.forEach(item => {
+        spendingMap.set(item.customer_id, Number(item._sum.price || 0));
+      });
+
+      const transformedCustomers = customers.map(customer => ({
+        ...this.transformToResponseDto(customer),
+        total_spent: spendingMap.get(customer.id) || 0,
+        total_jobs: customer._count.jobs,
+        total_feedbacks: customer._count.feedbacks,
+        total_chats: customer._count.chats,
+        total_service_requests: customer._count.service_requests,
+      }));
 
       return {
         data: transformedCustomers,

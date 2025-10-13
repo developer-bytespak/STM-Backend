@@ -195,47 +195,16 @@ export class ProvidersService {
       throw new NotFoundException('Service provider profile not found');
     }
 
-    // Execute all queries in parallel
-    const [jobStats, earnings, recentFeedback, recentJobs] = await Promise.all([
-      // Job statistics
-      this.prisma.jobs.groupBy({
-        by: ['status'],
-        where: { provider_id: provider.id },
-        _count: true,
-      }),
-
-      // Earnings (from payment table)
-      this.prisma.payments.aggregate({
-        where: {
-          job: { provider_id: provider.id },
-          status: 'received',
-        },
-        _sum: { amount: true },
-      }),
-
-      // Recent feedback
-      this.prisma.ratings_feedback.findMany({
-        where: { provider_id: provider.id },
-        include: {
-          customer: {
-            select: {
-              user: {
-                select: {
-                  first_name: true,
-                  last_name: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { created_at: 'desc' },
-        take: 5,
-      }),
-
-      // Recent jobs
+    // Single optimized query to get all data
+    const [jobsData, paymentsData, feedbackData] = await Promise.all([
+      // Get all jobs with related data
       this.prisma.jobs.findMany({
         where: { provider_id: provider.id },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          price: true,
+          created_at: true,
           service: {
             select: {
               name: true,
@@ -253,11 +222,41 @@ export class ProvidersService {
           },
         },
         orderBy: { created_at: 'desc' },
-        take: 5,
+      }),
+
+      // Get earnings from payments table (exact same logic)
+      this.prisma.payments.aggregate({
+        where: {
+          job: { provider_id: provider.id },
+          status: 'received',
+        },
+        _sum: { amount: true },
+      }),
+
+      // Get all feedback with related data
+      this.prisma.ratings_feedback.findMany({
+        where: { provider_id: provider.id },
+        select: {
+          id: true,
+          rating: true,
+          feedback: true,
+          created_at: true,
+          customer: {
+            select: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
       }),
     ]);
 
-    // Process job stats
+    // Process job stats (exact same logic)
     const jobCounts = {
       new: 0,
       in_progress: 0,
@@ -267,18 +266,18 @@ export class ProvidersService {
       rejected_by_sp: 0,
     };
 
-    jobStats.forEach((stat) => {
-      jobCounts[stat.status] = stat._count;
+    jobsData.forEach((job) => {
+      jobCounts[job.status] = (jobCounts[job.status] || 0) + 1;
     });
 
     const totalJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
-    const totalEarnings = earnings._sum.amount ? Number(earnings._sum.amount) : 0;
+    const totalEarnings = paymentsData._sum.amount ? Number(paymentsData._sum.amount) : 0;
 
-    // Calculate average rating
+    // Calculate average rating (exact same logic)
     const averageRating =
-      recentFeedback.length > 0
-        ? recentFeedback.reduce((sum, f) => sum + (f.rating || 0), 0) /
-          recentFeedback.length
+      feedbackData.length > 0
+        ? feedbackData.reduce((sum, f) => sum + (f.rating || 0), 0) /
+          feedbackData.length
         : Number(provider.rating);
 
     return {
@@ -294,7 +293,7 @@ export class ProvidersService {
         jobsToComplete: jobCounts.in_progress,
         paymentsToMark: jobCounts.completed,
       },
-      recentJobs: recentJobs.map((job) => ({
+      recentJobs: jobsData.slice(0, 5).map((job) => ({
         id: job.id,
         service: job.service.name,
         customer: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
@@ -302,7 +301,7 @@ export class ProvidersService {
         price: Number(job.price),
         createdAt: job.created_at,
       })),
-      recentFeedback: recentFeedback.map((feedback) => ({
+      recentFeedback: feedbackData.slice(0, 5).map((feedback) => ({
         id: feedback.id,
         rating: feedback.rating,
         feedback: feedback.feedback,
