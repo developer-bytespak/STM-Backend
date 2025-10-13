@@ -478,59 +478,84 @@ export class LsmService {
       throw new NotFoundException('LSM profile not found');
     }
 
-    // Execute all queries in parallel
-    const [
-      providerStats,
-      jobStats,
-      pendingServiceRequests,
-      disputeStats,
-      recentActivity,
-    ] = await Promise.all([
-      // Provider statistics
-      this.prisma.service_providers.groupBy({
-        by: ['status'],
-        where: { lsm_id: lsm.id },
-        _count: true,
-      }),
-
-      // Job statistics (via providers in region)
-      this.getJobStatsForRegion(lsm.id),
-
-      // Pending service requests
-      this.prisma.service_requests.count({
-        where: {
-          region: lsm.region,
-          area: lsm.area,
-          lsm_approved: false,
-          final_status: 'pending',
-        },
-      }),
-
-      // Dispute statistics
-      this.getDisputeStatsForRegion(lsm.id),
-
-      // Recent activity (last 24 hours)
+    // Optimized: Single raw query to get all basic statistics
+    const [basicStats, recentActivity] = await Promise.all([
+      // Single query to get all basic counts for this LSM's region
+      this.prisma.$queryRaw`
+        SELECT 
+          (SELECT COUNT(*) FROM service_providers WHERE lsm_id = ${lsm.id} AND status = 'pending') as pending_providers,
+          (SELECT COUNT(*) FROM service_providers WHERE lsm_id = ${lsm.id} AND status = 'active') as active_providers,
+          (SELECT COUNT(*) FROM service_providers WHERE lsm_id = ${lsm.id} AND status = 'inactive') as inactive_providers,
+          (SELECT COUNT(*) FROM service_providers WHERE lsm_id = ${lsm.id} AND status = 'banned') as banned_providers,
+          (SELECT COUNT(*) FROM jobs j 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND j.status = 'new') as new_jobs,
+          (SELECT COUNT(*) FROM jobs j 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND j.status = 'in_progress') as in_progress_jobs,
+          (SELECT COUNT(*) FROM jobs j 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND j.status = 'completed') as completed_jobs,
+          (SELECT COUNT(*) FROM jobs j 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND j.status = 'paid') as paid_jobs,
+          (SELECT COUNT(*) FROM jobs j 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND j.status = 'cancelled') as cancelled_jobs,
+          (SELECT COUNT(*) FROM service_requests 
+           WHERE region = ${lsm.region} AND area = ${lsm.area} AND lsm_approved = false AND final_status = 'pending') as pending_requests,
+          (SELECT COUNT(*) FROM disputes d 
+           JOIN jobs j ON d.job_id = j.id 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND d.status = 'pending') as pending_disputes,
+          (SELECT COUNT(*) FROM disputes d 
+           JOIN jobs j ON d.job_id = j.id 
+           JOIN service_providers sp ON j.provider_id = sp.id 
+           WHERE sp.lsm_id = ${lsm.id} AND d.status = 'resolved') as resolved_disputes
+      `,
+      // Recent Activity (separate query as it's complex)
       this.getRecentActivityForRegion(lsm.id),
     ]);
 
-    // Process provider stats
-    const providerCounts = { pending: 0, active: 0, inactive: 0, banned: 0 };
-    providerStats.forEach((stat) => {
-      providerCounts[stat.status] = stat._count;
-    });
+    const stats = basicStats[0] as any;
+
+    // Process stats into expected format (exact same structure)
+    const providerCounts = {
+      pending: Number(stats.pending_providers),
+      active: Number(stats.active_providers),
+      inactive: Number(stats.inactive_providers),
+      banned: Number(stats.banned_providers),
+    };
+
+    const jobCounts = {
+      new: Number(stats.new_jobs),
+      in_progress: Number(stats.in_progress_jobs),
+      completed: Number(stats.completed_jobs),
+      paid: Number(stats.paid_jobs),
+      cancelled: Number(stats.cancelled_jobs),
+      rejected_by_sp: 0, // Not commonly used for LSM dashboard
+    };
+
+    const disputeStats = {
+      pending: Number(stats.pending_disputes),
+      resolved: Number(stats.resolved_disputes),
+      total: Number(stats.pending_disputes) + Number(stats.resolved_disputes),
+    };
 
     const totalProviders = Object.values(providerCounts).reduce((sum, count) => sum + count, 0);
+    const totalJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
 
+    // Return exact same structure as before
     return {
       region: lsm.region,
       summary: {
         totalProviders,
-        totalJobs: jobStats.total,
-        pendingServiceRequests,
-        pendingDisputes: disputeStats.pending,
+        totalJobs,
+        pendingServiceRequests: Number(stats.pending_requests),
+        pendingDisputes: Number(stats.pending_disputes),
       },
       providers: providerCounts,
-      jobs: jobStats.byStatus,
+      jobs: jobCounts,
       disputes: disputeStats,
       recentActivity,
     };

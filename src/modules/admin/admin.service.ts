@@ -1417,90 +1417,57 @@ export class AdminService {
    * Get admin dashboard overview with all key statistics
    */
   async getDashboard() {
-    // Execute all queries in parallel for better performance
-    const [
-      lsmStats,
-      providerStats,
-      customerCount,
-      jobStats,
-      revenue,
-      pendingServiceRequests,
-      pendingDisputes,
-      recentActivity,
-      topRegions,
-    ] = await Promise.all([
-      // 1. LSM Statistics
-      this.prisma.local_service_managers.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
-
-      // 2. Provider Statistics
-      this.prisma.service_providers.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
-
-      // 3. Total Customers
-      this.prisma.customers.count(),
-
-      // 4. Job Statistics
-      this.prisma.jobs.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
-
-      // 5. Total Revenue (paid jobs)
-      this.prisma.jobs.aggregate({
-        where: { status: 'paid' },
-        _sum: { price: true },
-      }),
-
-      // 6. Pending Service Requests
-      this.prisma.service_requests.count({
-        where: {
-          lsm_approved: true,
-          admin_approved: false,
-          final_status: 'pending',
-        },
-      }),
-
-      // 7. Pending Disputes
-      this.prisma.disputes.count({
-        where: { status: 'pending' },
-      }),
-
-      // 8. Recent Activity (last 24 hours)
+    // Optimized: Single raw query to get all basic statistics
+    const [basicStats, recentActivity, topRegions] = await Promise.all([
+      // Single query to get all basic counts and revenue
+      this.prisma.$queryRaw`
+        SELECT 
+          (SELECT COUNT(*) FROM local_service_managers WHERE status = 'active') as active_lsms,
+          (SELECT COUNT(*) FROM local_service_managers WHERE status = 'inactive') as inactive_lsms,
+          (SELECT COUNT(*) FROM service_providers WHERE status = 'pending') as pending_providers,
+          (SELECT COUNT(*) FROM service_providers WHERE status = 'active') as active_providers,
+          (SELECT COUNT(*) FROM service_providers WHERE status = 'inactive') as inactive_providers,
+          (SELECT COUNT(*) FROM service_providers WHERE status = 'banned') as banned_providers,
+          (SELECT COUNT(*) FROM customers) as total_customers,
+          (SELECT COUNT(*) FROM jobs WHERE status = 'new') as new_jobs,
+          (SELECT COUNT(*) FROM jobs WHERE status = 'in_progress') as in_progress_jobs,
+          (SELECT COUNT(*) FROM jobs WHERE status = 'completed') as completed_jobs,
+          (SELECT COUNT(*) FROM jobs WHERE status = 'paid') as paid_jobs,
+          (SELECT COUNT(*) FROM jobs WHERE status = 'cancelled') as cancelled_jobs,
+          (SELECT COUNT(*) FROM jobs WHERE status = 'rejected_by_sp') as rejected_jobs,
+          (SELECT COALESCE(SUM(price), 0) FROM jobs WHERE status = 'paid') as total_revenue,
+          (SELECT COUNT(*) FROM service_requests WHERE lsm_approved = true AND admin_approved = false AND final_status = 'pending') as pending_requests,
+          (SELECT COUNT(*) FROM disputes WHERE status = 'pending') as pending_disputes
+      `,
+      // Recent Activity (separate query as it's complex)
       this.getRecentActivity(),
-
-      // 9. Top 5 Regions
+      // Top Regions (separate query as it's complex)
       this.getTopRegions(),
     ]);
 
-    // Process LSM stats
-    const lsmCounts = { active: 0, inactive: 0 };
-    lsmStats.forEach((stat) => {
-      lsmCounts[stat.status] = stat._count;
-    });
+    const stats = basicStats[0] as any;
 
-    // Process Provider stats
-    const providerCounts = { pending: 0, active: 0, inactive: 0, banned: 0 };
-    providerStats.forEach((stat) => {
-      providerCounts[stat.status] = stat._count;
-    });
-
-    // Process Job stats
-    const jobCounts = {
-      new: 0,
-      in_progress: 0,
-      completed: 0,
-      paid: 0,
-      cancelled: 0,
-      rejected_by_sp: 0,
+    // Process stats into expected format (exact same structure)
+    const lsmCounts = {
+      active: Number(stats.active_lsms),
+      inactive: Number(stats.inactive_lsms),
     };
-    jobStats.forEach((stat) => {
-      jobCounts[stat.status] = stat._count;
-    });
+
+    const providerCounts = {
+      pending: Number(stats.pending_providers),
+      active: Number(stats.active_providers),
+      inactive: Number(stats.inactive_providers),
+      banned: Number(stats.banned_providers),
+    };
+
+    const jobCounts = {
+      new: Number(stats.new_jobs),
+      in_progress: Number(stats.in_progress_jobs),
+      completed: Number(stats.completed_jobs),
+      paid: Number(stats.paid_jobs),
+      cancelled: Number(stats.cancelled_jobs),
+      rejected_by_sp: Number(stats.rejected_jobs),
+    };
 
     const totalLSMs = lsmCounts.active + lsmCounts.inactive;
     const totalProviders =
@@ -1510,20 +1477,21 @@ export class AdminService {
       providerCounts.banned;
     const totalJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
 
+    // Return exact same structure as before
     return {
       summary: {
         totalLSMs,
         totalProviders,
-        totalCustomers: customerCount,
+        totalCustomers: Number(stats.total_customers),
         totalJobs,
-        totalRevenue: revenue._sum.price ? Number(revenue._sum.price) : 0,
+        totalRevenue: Number(stats.total_revenue),
       },
       lsms: lsmCounts,
       providers: providerCounts,
       jobs: jobCounts,
       pendingActions: {
-        serviceRequests: pendingServiceRequests,
-        disputes: pendingDisputes,
+        serviceRequests: Number(stats.pending_requests),
+        disputes: Number(stats.pending_disputes),
       },
       recentActivity,
       topRegions,
