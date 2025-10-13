@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: STM-Backend
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: node dist/main
+    envVars:
+      - key: NODE_VERSION
+        value: 20
