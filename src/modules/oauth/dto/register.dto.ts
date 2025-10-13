@@ -77,6 +77,14 @@ export class RegisterDto {
   region: string;
 
   @ApiPropertyOptional({
+    description: 'Specific area within region (required for LSM role, optional for others)',
+    example: 'Manhattan North',
+  })
+  @IsString()
+  @IsOptional()
+  area?: string;
+
+  @ApiPropertyOptional({
     description: 'Zipcode for location-based assignment',
     example: '10001',
   })

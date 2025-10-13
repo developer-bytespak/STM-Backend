@@ -32,6 +32,11 @@ export class UpdateLsmDto {
   @IsString()
   region?: string;
 
+  @ApiPropertyOptional({ example: 'Manhattan North' })
+  @IsOptional()
+  @IsString()
+  area?: string;
+
   @ApiPropertyOptional({ enum: LSMStatus, example: 'active' })
   @IsOptional()
   @IsEnum(LSMStatus)

@@ -34,12 +34,12 @@ export class ReplaceLsmDto {
   @ApiProperty({ 
     enum: OldLsmAction, 
     example: 'deactivate',
-    description: 'delete = deactivate old LSM, deactivate = set to inactive, reassign = move to new region' 
+    description: 'delete = deactivate old LSM, deactivate = set to inactive, reassign = move to new area' 
   })
   @IsEnum(OldLsmAction)
   oldLsmAction: 'delete' | 'deactivate' | 'reassign';
 
-  // If reassigning old LSM, provide new region
+  // If reassigning old LSM, provide new region and area
   @ApiPropertyOptional({ 
     example: 'Los Angeles',
     description: 'Required if oldLsmAction is "reassign"' 
@@ -47,5 +47,13 @@ export class ReplaceLsmDto {
   @IsOptional()
   @IsString()
   newRegionForOldLsm?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'Downtown',
+    description: 'Required if oldLsmAction is "reassign"' 
+  })
+  @IsOptional()
+  @IsString()
+  newAreaForOldLsm?: string;
 }
 

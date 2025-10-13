@@ -104,6 +104,7 @@ export class OAuthService {
       phoneNumber, 
       role, 
       region, 
+      area,
       zipcode, 
       address, 
       location, 
@@ -167,26 +168,34 @@ export class OAuthService {
           break;
 
         case UserRole.PROVIDER:
-          // For providers, we need an LSM assignment by region
+          // For providers, we need an LSM assignment by region and area
           if (!region) {
             throw new BadRequestException(
               'Region is required for provider registration. Please specify the region.',
             );
           }
 
-          // Find LSM in the specified region
+          // Find LSM in the specified region and area
+          // If area is not provided, find any LSM in the region
+          const lsmWhere: any = { 
+            status: 'active',
+            region: region
+          };
+          
+          if (area) {
+            lsmWhere.area = area;
+          }
+
           const availableLSM = await prisma.local_service_managers.findFirst({
-            where: { 
-              status: 'active',
-              region: region
-            },
+            where: lsmWhere,
             orderBy: { created_at: 'asc' }
           });
           
           if (!availableLSM) {
-            throw new BadRequestException(
-              `No active LSM available in region "${region}". Please contact admin to create an LSM for this region.`,
-            );
+            const errorMsg = area 
+              ? `No active LSM available in region "${region}" for area "${area}". Please contact admin.`
+              : `No active LSM available in region "${region}". Please contact admin.`;
+            throw new BadRequestException(errorMsg);
           }
 
           // Convert experience level to years
@@ -269,10 +278,17 @@ export class OAuthService {
             );
           }
 
-          // Check if LSM already exists for this region (ONE LSM PER REGION RULE)
+          if (!area) {
+            throw new BadRequestException(
+              'Area is required for LSM registration. Please specify the specific area within the region.',
+            );
+          }
+
+          // Check if LSM already exists for this region and area (ONE LSM PER AREA RULE)
           const existingLSM = await prisma.local_service_managers.findFirst({
             where: {
               region: region,
+              area: area,
               status: 'active',
             },
             include: {
@@ -288,16 +304,17 @@ export class OAuthService {
 
           if (existingLSM) {
             throw new ConflictException(
-              `An active LSM already exists for region "${region}". ` +
+              `An active LSM already exists for region "${region}" in area "${area}". ` +
               `LSM: ${existingLSM.user.first_name} ${existingLSM.user.last_name} (${existingLSM.user.email}). ` +
-              `Only one LSM is allowed per region. Please contact admin to replace the existing LSM.`,
+              `Only one LSM is allowed per area. Please contact admin to replace the existing LSM.`,
             );
           }
           
           await prisma.local_service_managers.create({
             data: {
               user_id: newUser.id,
-              region: region, // Use provided region
+              region: region,
+              area: area,
             },
           });
           break;

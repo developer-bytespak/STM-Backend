@@ -467,13 +467,16 @@ export class AdminService {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Check if LSM already exists for this region
+    // Check if LSM already exists for this region and area
     const existingLsm = await this.prisma.local_service_managers.findFirst({
-      where: { region: dto.region },
+      where: { 
+        region: dto.region,
+        area: dto.area,
+      },
     });
 
     if (existingLsm) {
-      throw new ConflictException(`LSM already exists for region: ${dto.region}`);
+      throw new ConflictException(`LSM already exists for region: ${dto.region}, area: ${dto.area}`);
     }
 
     // Hash password
@@ -496,6 +499,7 @@ export class AdminService {
         data: {
           user_id: user.id,
           region: dto.region,
+          area: dto.area,
           status: 'active',
         },
       });
@@ -509,6 +513,7 @@ export class AdminService {
           lastName: user.last_name,
         },
         region: lsm.region,
+        area: lsm.area,
         status: lsm.status,
         message: 'LSM created successfully',
       };
@@ -547,23 +552,26 @@ export class AdminService {
       throw new ConflictException('Email already in use');
     }
 
-    // If reassigning old LSM, validate new region
+    // If reassigning old LSM, validate new region and area
     if (dto.oldLsmAction === 'reassign') {
-      if (!dto.newRegionForOldLsm) {
+      if (!dto.newRegionForOldLsm || !dto.newAreaForOldLsm) {
         throw new BadRequestException(
-          'newRegionForOldLsm is required when oldLsmAction is "reassign"',
+          'newRegionForOldLsm and newAreaForOldLsm are required when oldLsmAction is "reassign"',
         );
       }
 
-      // Check if new region already has an LSM
+      // Check if new region and area already has an LSM
       const existingLsmInNewRegion =
         await this.prisma.local_service_managers.findFirst({
-          where: { region: dto.newRegionForOldLsm },
+          where: { 
+            region: dto.newRegionForOldLsm,
+            area: dto.newAreaForOldLsm,
+          },
         });
 
       if (existingLsmInNewRegion) {
         throw new ConflictException(
-          `Region "${dto.newRegionForOldLsm}" already has an LSM`,
+          `Region "${dto.newRegionForOldLsm}" area "${dto.newAreaForOldLsm}" already has an LSM`,
         );
       }
     }
@@ -585,11 +593,12 @@ export class AdminService {
         },
       });
 
-      // 2. Create new LSM profile (same region as old LSM)
+      // 2. Create new LSM profile (same region and area as old LSM)
       const newLsm = await tx.local_service_managers.create({
         data: {
           user_id: newUser.id,
           region: oldLsm.region,
+          area: oldLsm.area,
           status: 'active',
         },
       });
@@ -632,7 +641,7 @@ export class AdminService {
             recipient_id: oldLsm.user_id,
             type: 'system',
             title: 'Account Deactivated',
-            message: `Your LSM account has been deactivated. A new LSM has been appointed for ${oldLsm.region} region.`,
+            message: `Your LSM account has been deactivated. A new LSM has been appointed for ${oldLsm.region} (${oldLsm.area}).`,
           },
         });
 
@@ -641,12 +650,13 @@ export class AdminService {
           status: updatedOldLsm.status,
         };
       } else if (dto.oldLsmAction === 'reassign') {
-        // Reassign old LSM to new region
+        // Reassign old LSM to new region and area
         const updatedOldLsm = await tx.local_service_managers.update({
           where: { id: oldLsmId },
           data: {
             region: dto.newRegionForOldLsm,
-            status: 'active', // Keep active in new region
+            area: dto.newAreaForOldLsm,
+            status: 'active', // Keep active in new area
           },
         });
 
@@ -656,14 +666,15 @@ export class AdminService {
             recipient_type: 'local_service_manager',
             recipient_id: oldLsm.user_id,
             type: 'system',
-            title: 'Region Reassignment',
-            message: `You have been reassigned from ${oldLsm.region} to ${dto.newRegionForOldLsm} region. Your account remains active.`,
+            title: 'Area Reassignment',
+            message: `You have been reassigned from ${oldLsm.region} (${oldLsm.area}) to ${dto.newRegionForOldLsm} (${dto.newAreaForOldLsm}). Your account remains active.`,
           },
         });
 
         oldLsmResult = {
           action: 'reassigned',
           newRegion: updatedOldLsm.region,
+          newArea: updatedOldLsm.area,
           status: updatedOldLsm.status,
         };
       }
@@ -675,6 +686,7 @@ export class AdminService {
           name: `${dto.newLsmFirstName} ${dto.newLsmLastName}`,
           email: dto.newLsmEmail,
           region: newLsm.region,
+          area: newLsm.area,
           status: newLsm.status,
         },
         oldLsm: {
@@ -702,35 +714,43 @@ export class AdminService {
       throw new NotFoundException('LSM not found');
     }
 
-    // If changing region, check if another LSM exists in that region
-    if (dto.region && dto.region !== lsm.region) {
-      // Check if target region already has an LSM
-      const existingLsmInTargetRegion = await this.prisma.local_service_managers.findFirst({
+    // If changing region or area, check if another LSM exists in that region+area
+    const regionChanged = dto.region && dto.region !== lsm.region;
+    const areaChanged = dto.area && dto.area !== lsm.area;
+    
+    if (regionChanged || areaChanged) {
+      const targetRegion = dto.region || lsm.region;
+      const targetArea = dto.area || lsm.area;
+      
+      // Check if target region+area already has an LSM
+      const existingLsmInTargetArea = await this.prisma.local_service_managers.findFirst({
         where: {
-          region: dto.region,
+          region: targetRegion,
+          area: targetArea,
           id: { not: lsmId }, // Exclude current LSM
           status: 'active',
         },
       });
 
-      if (existingLsmInTargetRegion) {
+      if (existingLsmInTargetArea) {
         throw new ConflictException(
-          `Another LSM already exists for region: ${dto.region}`,
+          `Another LSM already exists for region: ${targetRegion}, area: ${targetArea}`,
         );
       }
 
-      // Check if current region will have another LSM after this one leaves
-      const otherLsmInCurrentRegion = await this.prisma.local_service_managers.findFirst({
+      // Check if current region+area will have another LSM after this one leaves
+      const otherLsmInCurrentArea = await this.prisma.local_service_managers.findFirst({
         where: {
           region: lsm.region,
+          area: lsm.area,
           id: { not: lsmId },
           status: 'active',
         },
       });
 
-      if (!otherLsmInCurrentRegion) {
+      if (!otherLsmInCurrentArea) {
         throw new BadRequestException(
-          `Cannot change region. "${lsm.region}" will have no LSM after this change. Please create a replacement LSM for "${lsm.region}" first, or use the Replace LSM API.`,
+          `Cannot change area. "${lsm.region}" (${lsm.area}) will have no LSM after this change. Please create a replacement LSM first, or use the Replace LSM API.`,
         );
       }
     }
@@ -759,6 +779,7 @@ export class AdminService {
     // Prepare LSM update data
     const lsmUpdateData: any = {};
     if (dto.region) lsmUpdateData.region = dto.region;
+    if (dto.area) lsmUpdateData.area = dto.area;
     if (dto.status) lsmUpdateData.status = dto.status;
 
     // Update in transaction

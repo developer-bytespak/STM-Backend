@@ -61,6 +61,10 @@ export class LSMResponseDto {
 
   @ApiProperty()
   @Expose()
+  area: string;
+
+  @ApiProperty()
+  @Expose()
   status: string;
 
   @ApiPropertyOptional()
