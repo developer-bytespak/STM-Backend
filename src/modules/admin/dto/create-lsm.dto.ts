@@ -57,4 +57,12 @@ export class CreateLsmDto {
   @IsString()
   @IsNotEmpty()
   region: string;
+
+  @ApiProperty({
+    description: 'Specific area within region assigned to LSM',
+    example: 'Manhattan North',
+  })
+  @IsString()
+  @IsNotEmpty()
+  area: string;
 }

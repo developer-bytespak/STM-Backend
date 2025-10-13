@@ -86,6 +86,7 @@ model local_service_managers {
   id                 Int                 @id @default(autoincrement())
   user_id            Int                 @unique
   region             String
+  area               String? // Specific area within region (e.g., "North Dallas", "Houston Central")
   status             LSMStatus           @default(active)
   closed_deals_count Int?                @default(0)
   earnings           Decimal?            @default(0.00) @db.Decimal(10, 2)
@@ -256,6 +257,7 @@ model service_requests {
   keyword                String?
   zipcode                String?
   region                 String?
+  area                   String? // Specific area within region for LSM filtering
   email_sent             Boolean           @default(false)
   reviewed               Boolean           @default(false)
   created_at             DateTime          @default(now())

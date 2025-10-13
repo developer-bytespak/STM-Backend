@@ -30,6 +30,7 @@ export class LsmService {
     const requests = await this.prisma.service_requests.findMany({
       where: {
         region: lsm.region,
+        area: lsm.area,
         final_status: 'pending',
         lsm_approved: false,
       },
@@ -91,9 +92,9 @@ export class LsmService {
       throw new NotFoundException('Service request not found');
     }
 
-    // Verify request is in LSM's region
-    if (request.region !== lsm.region) {
-      throw new ForbiddenException('This request is not in your region');
+    // Verify request is in LSM's region and area
+    if (request.region !== lsm.region || request.area !== lsm.area) {
+      throw new ForbiddenException('This request is not in your area');
     }
 
     if (request.lsm_approved) {
@@ -163,8 +164,8 @@ export class LsmService {
       throw new NotFoundException('Service request not found');
     }
 
-    if (request.region !== lsm.region) {
-      throw new ForbiddenException('This request is not in your region');
+    if (request.region !== lsm.region || request.area !== lsm.area) {
+      throw new ForbiddenException('This request is not in your area');
     }
 
     // Update request
@@ -499,6 +500,7 @@ export class LsmService {
       this.prisma.service_requests.count({
         where: {
           region: lsm.region,
+          area: lsm.area,
           lsm_approved: false,
           final_status: 'pending',
         },
@@ -1794,6 +1796,7 @@ export class LsmService {
 
     const where: any = {
       region: lsm.region,
+      area: lsm.area,
     };
 
     if (status) {

@@ -69,6 +69,7 @@ export class ProvidersService {
         description: dto.description,
         questions_json: dto.suggestedQuestions,
         region: provider.local_service_manager.region,
+        area: provider.local_service_manager.area,
         final_status: 'pending',
       },
     });
