@@ -134,9 +134,17 @@ export class OAuthService {
 
     // Create user in transaction with role-specific profile
     const user = await this.prisma.$transaction(async (prisma) => {
+      // Get max ID and set next ID to max+1
+      const maxUser = await prisma.users.findFirst({
+        orderBy: { id: 'desc' },
+        select: { id: true },
+      });
+      const nextId = maxUser ? maxUser.id + 1 : 1;
+
       // Create base user
       const newUser = await prisma.users.create({
         data: {
+          id: nextId,
           email,
           password: hashedPassword,
           first_name: firstName,
