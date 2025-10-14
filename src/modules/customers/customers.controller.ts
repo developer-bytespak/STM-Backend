@@ -83,6 +83,63 @@ export class CustomersController {
     return this.customersService.getCustomerStats();
   }
 
+  /**
+   * Get customer dashboard
+   */
+  @Get('dashboard')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer dashboard with statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard retrieved successfully' })
+  async getCustomerDashboard(@CurrentUser('id') userId: number) {
+    return this.customersService.getCustomerDashboard(userId);
+  }
+
+  /**
+   * Get jobs pending feedback
+   */
+  @Get('pending-feedback')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get jobs that need feedback' })
+  @ApiResponse({ status: 200, description: 'Pending feedback jobs retrieved successfully' })
+  async getPendingFeedback(@CurrentUser('id') userId: number) {
+    return this.customersService.getPendingFeedback(userId);
+  }
+
+  /**
+   * Get customer profile
+   */
+  @Get('profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer profile' })
+  @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
+  async getCustomerProfile(@CurrentUser('id') userId: number) {
+    return this.customersService.getCustomerProfile(userId);
+  }
+
+  /**
+   * Get job details
+   */
+  @Get('jobs/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get job details by ID' })
+  @ApiResponse({ status: 200, description: 'Job retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async getCustomerJobDetails(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+  ) {
+    return this.customersService.getCustomerJobDetails(userId, jobId);
+  }
+
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get customer by user ID' })
   @ApiParam({ name: 'userId', description: 'User ID' })
@@ -133,37 +190,6 @@ export class CustomersController {
   // ==================== CUSTOMER-FACING APIS ====================
 
   /**
-   * Get customer dashboard
-   */
-  @Get('dashboard')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get customer dashboard with statistics' })
-  @ApiResponse({ status: 200, description: 'Dashboard retrieved successfully' })
-  async getCustomerDashboard(@CurrentUser('id') userId: number) {
-    return this.customersService.getCustomerDashboard(userId);
-  }
-
-  /**
-   * Get job details
-   */
-  @Get('jobs/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get job details by ID' })
-  @ApiResponse({ status: 200, description: 'Job retrieved successfully' })
-  @ApiResponse({ status: 403, description: 'Not your job' })
-  @ApiResponse({ status: 404, description: 'Job not found' })
-  async getCustomerJobDetails(
-    @CurrentUser('id') userId: number,
-    @Param('id', ParseIntPipe) jobId: number,
-  ) {
-    return this.customersService.getCustomerJobDetails(userId, jobId);
-  }
-
-  /**
    * Perform job action (approve edits, close deal, cancel)
    */
   @Post('jobs/:id/action')
@@ -206,19 +232,6 @@ export class CustomersController {
   }
 
   /**
-   * Get jobs pending feedback
-   */
-  @Get('pending-feedback')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get jobs that need feedback' })
-  @ApiResponse({ status: 200, description: 'Pending feedback jobs retrieved successfully' })
-  async getPendingFeedback(@CurrentUser('id') userId: number) {
-    return this.customersService.getPendingFeedback(userId);
-  }
-
-  /**
    * File a dispute
    */
   @Post('disputes')
@@ -235,19 +248,6 @@ export class CustomersController {
     @Body() dto: FileDisputeDto,
   ) {
     return this.customersService.fileDispute(userId, dto);
-  }
-
-  /**
-   * Get customer profile
-   */
-  @Get('profile')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get customer profile' })
-  @ApiResponse({ status: 200, description: 'Profile retrieved successfully' })
-  async getCustomerProfile(@CurrentUser('id') userId: number) {
-    return this.customersService.getCustomerProfile(userId);
   }
 
   /**
