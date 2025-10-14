@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SearchProvidersDto } from './dto/search-providers.dto';
+import { generateProviderSlug } from '../../shared/utils/slug.utils';
 
 @Injectable()
 export class HomepageService {
@@ -308,6 +309,7 @@ export class HomepageService {
     const providers = providerServices.map((ps) => ({
       id: ps.provider.id,
       businessName: ps.provider.business_name,
+      slug: generateProviderSlug(ps.provider.business_name, ps.provider.id),
       ownerName: `${ps.provider.user.first_name} ${ps.provider.user.last_name}`,
       rating: Number(ps.provider.rating),
       totalJobs: ps.provider.total_jobs,
@@ -336,6 +338,168 @@ export class HomepageService {
           category: serviceRecord.category,
         },
         location: zipcode,
+      },
+    };
+  }
+
+  /**
+   * Get detailed provider information by slug
+   * Slug format: "business-name-{id}" (e.g., "joes-plumbing-11")
+   */
+  async getProviderBySlug(slug: string) {
+    const { extractProviderIdFromSlug, verifyProviderSlug } = require('../../shared/utils/slug.utils');
+    
+    // 1. Extract provider ID from slug
+    const providerId = extractProviderIdFromSlug(slug);
+    
+    if (!providerId) {
+      throw new NotFoundException({
+        success: false,
+        error: {
+          code: 'INVALID_SLUG',
+          message: 'Invalid provider slug format',
+        },
+      });
+    }
+
+    // 2. Fetch provider with all details
+    const provider = await this.prisma.service_providers.findFirst({
+      where: {
+        id: providerId,
+        status: 'active',
+        is_deleted: false,
+      },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            phone_number: true,
+            email: true,
+          },
+        },
+        service_areas: {
+          select: {
+            zipcode: true,
+            is_primary: true,
+          },
+        },
+        provider_services: {
+          include: {
+            service: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+              },
+            },
+          },
+        },
+        documents: {
+          where: {
+            status: 'verified',
+          },
+          select: {
+            file_name: true,
+            file_type: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException({
+        success: false,
+        error: {
+          code: 'PROVIDER_NOT_FOUND',
+          message: 'Provider not found or inactive',
+        },
+      });
+    }
+
+    // 3. Verify slug matches (security check)
+    const isValidSlug = verifyProviderSlug(
+      slug,
+      provider.business_name,
+      provider.id,
+    );
+
+    if (!isValidSlug) {
+      throw new NotFoundException({
+        success: false,
+        error: {
+          code: 'SLUG_MISMATCH',
+          message: 'Provider slug does not match',
+        },
+      });
+    }
+
+    // 4. Get primary address
+    const primaryArea = provider.service_areas.find((area) => area.is_primary);
+    const primaryZip = primaryArea?.zipcode || provider.service_areas[0]?.zipcode || provider.zipcode;
+    
+    // Parse location from provider.location (e.g., "Dallas, TX")
+    const locationParts = provider.location?.split(',').map(s => s.trim()) || [];
+    const city = locationParts[0] || '';
+    const state = locationParts[1] || '';
+
+    // 5. Separate active and inactive services
+    const activeServices = provider.provider_services
+      .filter((ps) => ps.is_active)
+      .map((ps) => ({
+        id: ps.service.id,
+        name: ps.service.name,
+        category: ps.service.category,
+        isActive: true,
+      }));
+
+    const inactiveServices = provider.provider_services
+      .filter((ps) => !ps.is_active)
+      .map((ps) => ({
+        id: ps.service.id,
+        name: ps.service.name,
+        category: ps.service.category,
+        isActive: false,
+      }));
+
+    // 6. Get certifications from verified documents
+    const certifications = provider.documents
+      .filter((doc) => doc.description?.toLowerCase().includes('certif'))
+      .map((doc) => doc.description);
+
+    // 7. Format response
+    return {
+      success: true,
+      data: {
+        id: provider.id,
+        businessName: provider.business_name,
+        slug: generateProviderSlug(provider.business_name, provider.id),
+        ownerName: `${provider.user.first_name} ${provider.user.last_name}`,
+        rating: Number(provider.rating),
+        totalJobs: provider.total_jobs,
+        experience: provider.experience,
+        description: provider.description,
+        location: provider.location,
+        phoneNumber: provider.user.phone_number,
+        email: provider.user.email,
+        minPrice: provider.min_price ? Number(provider.min_price) : null,
+        maxPrice: provider.max_price ? Number(provider.max_price) : null,
+        priceRange: {
+          min: provider.min_price ? Number(provider.min_price) : null,
+          max: provider.max_price ? Number(provider.max_price) : null,
+        },
+        services: [...activeServices, ...inactiveServices], // Active first, then inactive
+        serviceAreas: provider.service_areas.map((area) => area.zipcode),
+        address: {
+          city,
+          state,
+          zipCode: primaryZip,
+        },
+        certifications: certifications.length > 0 ? certifications : undefined,
+        isAvailable: provider.is_active && activeServices.length > 0,
+        // Note: workingHours and reviews would need separate tables in your schema
+        // For now, these are optional and can be added later
       },
     };
   }
