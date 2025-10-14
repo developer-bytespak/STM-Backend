@@ -48,28 +48,38 @@ export class HomepageService {
       },
     });
 
-    // 3. Combine results
+    // 3. Combine results with deduplication
     const results = [];
+    const addedItems = new Set<string>(); // Track added items by lowercase name
 
     // Add categories
     for (const cat of categoryMatches) {
-      results.push({
-        type: 'category',
-        category: cat.category,
-        id: cat.id,
-        description: cat.description,
-      });
+      const key = cat.category.toLowerCase();
+      if (!addedItems.has(key)) {
+        results.push({
+          type: 'category',
+          category: cat.category,
+          id: cat.id,
+          description: cat.description,
+        });
+        addedItems.add(key);
+      }
     }
 
-    // Add services
+    // Add services (skip if same name as category already added)
     for (const svc of serviceMatches) {
-      results.push({
-        type: 'service',
-        category: svc.category,
-        name: svc.name,
-        id: svc.id,
-        description: svc.description,
-      });
+      const key = svc.name.toLowerCase();
+      // Only add if not already added (e.g., as a category)
+      if (!addedItems.has(key)) {
+        results.push({
+          type: 'service',
+          category: svc.category,
+          name: svc.name,
+          id: svc.id,
+          description: svc.description,
+        });
+        addedItems.add(key);
+      }
     }
 
     return {
