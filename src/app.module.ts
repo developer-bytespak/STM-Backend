@@ -24,6 +24,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
+import { UtilsModule } from './modules/utils/utils.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { HomepageModule } from './modules/homepage/homepage.module';
     OfficeSpacesModule,
     AdminModule,
     HomepageModule,
+    UtilsModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService, Logger, JobTimeoutService],

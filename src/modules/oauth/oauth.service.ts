@@ -103,12 +103,13 @@ export class OAuthService {
       lastName, 
       phoneNumber, 
       role, 
-      region, 
       area,
       zipcode, 
       address, 
       location, 
       experience,
+      city,
+      state,
       // Service Provider specific fields
       businessName,
       serviceType,
@@ -157,10 +158,18 @@ export class OAuthService {
       // Create role-specific profile
       switch (role) {
         case UserRole.CUSTOMER:
-          if (!region) {
-            throw new BadRequestException(
-              'Region is required for customer registration. Please specify the region.',
-            );
+          // Resolve city/state from zipcode if not provided
+          let customerCity = (city || '').trim();
+          let customerState = (state || '').trim();
+          if ((!customerCity || !customerState) && zipcode) {
+            try {
+              const resolved = await fetch(`https://api.zippopotam.us/us/${zipcode}`).then(r => r.json());
+              const places = resolved?.places || [];
+              if (places.length > 0) {
+                customerCity = customerCity || places[0]['place name'];
+                customerState = customerState || places[0]['state abbreviation'];
+              }
+            } catch {}
           }
           
           await prisma.customers.create({
@@ -169,25 +178,26 @@ export class OAuthService {
                 connect: { id: newUser.id }
               },
               address: address || 'Not provided', // Use provided address or default
-              region: region, // Save region for LSM assignment and analytics
+              region: customerState || 'Unknown', // kept for LSM compatibility for now
               zipcode: zipcode || null, // Optional field
+              city: customerCity || null,
+              state: customerState || null,
             },
           });
           break;
 
         case UserRole.PROVIDER:
-          // For providers, we need an LSM assignment by region and area
-          if (!region) {
-            throw new BadRequestException(
-              'Region is required for provider registration. Please specify the region.',
-            );
+          // For providers, we need an LSM assignment by region and area (use state for region while migrating)
+          const providerStateForRegion = (state || '').trim();
+          if (!providerStateForRegion) {
+            throw new BadRequestException('State (region) is required');
           }
 
           // Find LSM in the specified region and area
           // If area is not provided, find any LSM in the region
           const lsmWhere: any = { 
             status: 'active',
-            region: region
+            region: providerStateForRegion
           };
           
           if (area) {
@@ -201,8 +211,8 @@ export class OAuthService {
           
           if (!availableLSM) {
             const errorMsg = area 
-              ? `No active LSM available in region "${region}" for area "${area}". Please contact admin.`
-              : `No active LSM available in region "${region}". Please contact admin.`;
+              ? `No active LSM available in region "${providerStateForRegion}" for area "${area}". Please contact admin.`
+              : `No active LSM available in region "${providerStateForRegion}". Please contact admin.`;
             throw new BadRequestException(errorMsg);
           }
 
@@ -217,6 +227,21 @@ export class OAuthService {
           }
 
           // Create service provider with all new fields
+          // Resolve city/state if not provided
+          let spCity = (city || '').trim();
+          let spState = (state || '').trim();
+          const primaryZip = zipCodes?.[0] || zipcode || null;
+          if ((!spCity || !spState) && primaryZip) {
+            try {
+              const resolved = await fetch(`https://api.zippopotam.us/us/${primaryZip}`).then(r => r.json());
+              const places = resolved?.places || [];
+              if (places.length > 0) {
+                spCity = spCity || places[0]['place name'];
+                spState = spState || places[0]['state abbreviation'];
+              }
+            } catch {}
+          }
+
           const serviceProvider = await prisma.service_providers.create({
             data: {
               user_id: newUser.id,
@@ -225,7 +250,9 @@ export class OAuthService {
               experience_level: experienceLevel || null,
               description: description || null,
               location: location || 'Not provided',
-              zipcode: zipCodes?.[0] || zipcode || null, // Primary zipcode
+              city: spCity || null,
+              state: spState || null,
+              zipcode: primaryZip, // Primary zipcode
               min_price: minPrice || null,
               max_price: maxPrice || null,
               lsm_id: availableLSM.id,
@@ -280,9 +307,9 @@ export class OAuthService {
           break;
 
         case UserRole.LSM:
-          if (!region) {
+          if (!state) {
             throw new BadRequestException(
-              'Region is required for LSM registration. Please specify the region.',
+              'State is required for LSM registration. Please specify the state.',
             );
           }
 
@@ -295,7 +322,7 @@ export class OAuthService {
           // Check if LSM already exists for this region and area (ONE LSM PER AREA RULE)
           const existingLSM = await prisma.local_service_managers.findFirst({
             where: {
-              region: region,
+              region: state,
               area: area,
               status: 'active',
             },
@@ -312,7 +339,7 @@ export class OAuthService {
 
           if (existingLSM) {
             throw new ConflictException(
-              `An active LSM already exists for region "${region}" in area "${area}". ` +
+              `An active LSM already exists for region "${state}" in area "${area}". ` +
               `LSM: ${existingLSM.user.first_name} ${existingLSM.user.last_name} (${existingLSM.user.email}). ` +
               `Only one LSM is allowed per area. Please contact admin to replace the existing LSM.`,
             );
@@ -321,7 +348,7 @@ export class OAuthService {
           await prisma.local_service_managers.create({
             data: {
               user_id: newUser.id,
-              region: region,
+              region: state,
               area: area,
             },
           });
