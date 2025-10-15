@@ -195,96 +195,74 @@ export class ProvidersService {
       throw new NotFoundException('Service provider profile not found');
     }
 
-    // Single optimized query to get all data
-    const [jobsData, paymentsData, feedbackData] = await Promise.all([
-      // Get all jobs with related data
-      this.prisma.jobs.findMany({
-        where: { provider_id: provider.id },
-        select: {
-          id: true,
-          status: true,
-          price: true,
-          created_at: true,
-          service: {
-            select: {
-              name: true,
-            },
-          },
-          customer: {
-            select: {
-              user: {
-                select: {
-                  first_name: true,
-                  last_name: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { created_at: 'desc' },
-      }),
+    // Optimized: Single raw query to get all statistics
+    const [basicStats] = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        (SELECT COUNT(*) FROM jobs WHERE provider_id = ${provider.id} AND status = 'new') as new_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE provider_id = ${provider.id} AND status = 'in_progress') as in_progress_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE provider_id = ${provider.id} AND status = 'completed') as completed_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE provider_id = ${provider.id} AND status = 'paid') as paid_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE provider_id = ${provider.id} AND status = 'cancelled') as cancelled_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE provider_id = ${provider.id} AND status = 'rejected_by_sp') as rejected_jobs,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments p 
+         JOIN jobs j ON p.job_id = j.id 
+         WHERE j.provider_id = ${provider.id} AND p.status = 'received') as total_earnings,
+        (SELECT COALESCE(AVG(rating), ${provider.rating}) FROM ratings_feedback WHERE provider_id = ${provider.id}) as avg_rating,
+        (SELECT COUNT(*) FROM ratings_feedback WHERE provider_id = ${provider.id}) as feedback_count
+    `;
 
-      // Get earnings from payments table (exact same logic)
-      this.prisma.payments.aggregate({
-        where: {
-          job: { provider_id: provider.id },
-          status: 'received',
-        },
-        _sum: { amount: true },
-      }),
+    // Get recent jobs (separate query for complex joins)
+    const recentJobs = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        j.id, j.status, j.price, j.created_at,
+        s.name as service_name,
+        u.first_name as customer_first_name,
+        u.last_name as customer_last_name
+      FROM jobs j
+      JOIN services s ON j.service_id = s.id
+      JOIN customers c ON j.customer_id = c.id
+      JOIN users u ON c.user_id = u.id
+      WHERE j.provider_id = ${provider.id}
+      ORDER BY j.created_at DESC
+      LIMIT 5
+    `;
 
-      // Get all feedback with related data
-      this.prisma.ratings_feedback.findMany({
-        where: { provider_id: provider.id },
-        select: {
-          id: true,
-          rating: true,
-          feedback: true,
-          created_at: true,
-          customer: {
-            select: {
-              user: {
-                select: {
-                  first_name: true,
-                  last_name: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { created_at: 'desc' },
-      }),
-    ]);
+    // Get recent feedback (separate query for complex joins)
+    const recentFeedback = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        rf.id, rf.rating, rf.feedback, rf.created_at,
+        u.first_name as customer_first_name,
+        u.last_name as customer_last_name
+      FROM ratings_feedback rf
+      JOIN customers c ON rf.customer_id = c.id
+      JOIN users u ON c.user_id = u.id
+      WHERE rf.provider_id = ${provider.id}
+      ORDER BY rf.created_at DESC
+      LIMIT 5
+    `;
 
-    // Process job stats (exact same logic)
+    const stats = basicStats;
+
     const jobCounts = {
-      new: 0,
-      in_progress: 0,
-      completed: 0,
-      paid: 0,
-      cancelled: 0,
-      rejected_by_sp: 0,
+      new: Number(stats.new_jobs),
+      in_progress: Number(stats.in_progress_jobs),
+      completed: Number(stats.completed_jobs),
+      paid: Number(stats.paid_jobs),
+      cancelled: Number(stats.cancelled_jobs),
+      rejected_by_sp: Number(stats.rejected_jobs),
     };
 
-    jobsData.forEach((job) => {
-      jobCounts[job.status] = (jobCounts[job.status] || 0) + 1;
-    });
-
     const totalJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
-    const totalEarnings = paymentsData._sum.amount ? Number(paymentsData._sum.amount) : 0;
-
-    // Calculate average rating (exact same logic)
-    const averageRating =
-      feedbackData.length > 0
-        ? feedbackData.reduce((sum, f) => sum + (f.rating || 0), 0) /
-          feedbackData.length
-        : Number(provider.rating);
+    const totalEarnings = Number(stats.total_earnings);
+    const averageRating = Number(stats.feedback_count) > 0 
+      ? Number(Number(stats.avg_rating).toFixed(2))
+      : Number(provider.rating);
 
     return {
       summary: {
         totalJobs,
         totalEarnings,
-        averageRating: Number(averageRating.toFixed(2)),
+        averageRating,
         warnings: provider.warnings,
       },
       jobs: jobCounts,
@@ -293,19 +271,19 @@ export class ProvidersService {
         jobsToComplete: jobCounts.in_progress,
         paymentsToMark: jobCounts.completed,
       },
-      recentJobs: jobsData.slice(0, 5).map((job) => ({
-        id: job.id,
-        service: job.service.name,
-        customer: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
+      recentJobs: recentJobs.map((job) => ({
+        id: Number(job.id),
+        service: job.service_name,
+        customer: `${job.customer_first_name} ${job.customer_last_name}`,
         status: job.status,
         price: Number(job.price),
         createdAt: job.created_at,
       })),
-      recentFeedback: feedbackData.slice(0, 5).map((feedback) => ({
-        id: feedback.id,
-        rating: feedback.rating,
+      recentFeedback: recentFeedback.map((feedback) => ({
+        id: Number(feedback.id),
+        rating: Number(feedback.rating),
         feedback: feedback.feedback,
-        customer: `${feedback.customer.user.first_name} ${feedback.customer.user.last_name}`,
+        customer: `${feedback.customer_first_name} ${feedback.customer_last_name}`,
         createdAt: feedback.created_at,
       })),
     };
