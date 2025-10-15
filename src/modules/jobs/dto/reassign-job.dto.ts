@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ReassignJobDto {
   @ApiProperty({
@@ -7,5 +8,6 @@ export class ReassignJobDto {
     example: 43,
   })
   @IsNumber()
+  @Type(() => Number)
   newProviderId: number;
 }

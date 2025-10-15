@@ -8,12 +8,14 @@ class SearchFiltersDto {
   @IsNumber()
   @Min(0)
   @Max(5)
+  @Type(() => Number)
   minRating?: number;
 
   @ApiPropertyOptional({ description: 'Maximum price', example: 100 })
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Type(() => Number)
   maxPrice?: number;
 }
 

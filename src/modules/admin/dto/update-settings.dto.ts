@@ -1,5 +1,6 @@
 import { IsNumber, IsOptional, Min, Max } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export class UpdateSettingsDto {
   @ApiPropertyOptional({
@@ -12,6 +13,7 @@ export class UpdateSettingsDto {
   @IsOptional()
   @Min(15)
   @Max(1440)
+  @Type(() => Number)
   responseDeadlineMinutes?: number;
 
   @ApiPropertyOptional({
@@ -24,6 +26,7 @@ export class UpdateSettingsDto {
   @IsOptional()
   @Min(1)
   @Max(10)
+  @Type(() => Number)
   warningThreshold?: number;
 
   @ApiPropertyOptional({
@@ -34,6 +37,7 @@ export class UpdateSettingsDto {
   @IsNumber()
   @IsOptional()
   @Min(1)
+  @Type(() => Number)
   popularityThreshold?: number;
 
   @ApiPropertyOptional({
@@ -46,6 +50,7 @@ export class UpdateSettingsDto {
   @IsOptional()
   @Min(0)
   @Max(100)
+  @Type(() => Number)
   cancellationFeePercentage?: number;
 
   @ApiPropertyOptional({
@@ -56,6 +61,7 @@ export class UpdateSettingsDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Type(() => Number)
   defaultInPersonVisitCost?: number;
 }
 

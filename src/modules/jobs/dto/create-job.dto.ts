@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumber, IsObject, IsString, IsOptional, IsDateString, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateJobDto {
   @ApiProperty({
@@ -7,6 +8,7 @@ export class CreateJobDto {
     example: 5,
   })
   @IsNumber()
+  @Type(() => Number)
   serviceId: number;
 
   @ApiProperty({
@@ -14,6 +16,7 @@ export class CreateJobDto {
     example: 42,
   })
   @IsNumber()
+  @Type(() => Number)
   providerId: number;
 
   @ApiProperty({
@@ -59,5 +62,6 @@ export class CreateJobDto {
   })
   @IsNumber()
   @IsOptional()
+  @Type(() => Number)
   inPersonVisitCost?: number;
 }

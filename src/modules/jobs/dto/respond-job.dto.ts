@@ -23,6 +23,7 @@ export class NegotiationDto {
   })
   @IsNumber()
   @IsOptional()
+  @Type(() => Number)
   editedPrice?: number;
 
   @ApiPropertyOptional({

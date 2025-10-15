@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class AddServiceDto {
   @ApiProperty({
@@ -7,5 +8,6 @@ export class AddServiceDto {
     example: 5,
   })
   @IsNumber()
+  @Type(() => Number)
   serviceId: number;
 }
