@@ -445,87 +445,86 @@ export class CustomersService {
       throw new NotFoundException('Customer profile not found');
     }
 
-    const [jobStats, totalSpent, pendingFeedback, recentJobs, recentFeedback] =
-      await Promise.all([
-        this.prisma.jobs.groupBy({
-          by: ['status'],
-          where: { customer_id: customer.id },
-          _count: true,
-        }),
-        this.prisma.payments.aggregate({
-          where: {
-            job: { customer_id: customer.id },
-            status: 'received',
-          },
-          _sum: { amount: true },
-        }),
-        this.prisma.jobs.count({
-          where: {
-            customer_id: customer.id,
-            status: 'paid',
-            feedbacks: { none: {} },
-          },
-        }),
-        this.prisma.jobs.findMany({
-          where: { customer_id: customer.id },
-          include: {
-            service: { select: { name: true } },
-            service_provider: {
-              select: { business_name: true, user: { select: { first_name: true, last_name: true } } },
-            },
-          },
-          orderBy: { created_at: 'desc' },
-          take: 5,
-        }),
-        this.prisma.ratings_feedback.findMany({
-          where: { customer_id: customer.id },
-          include: {
-            provider: {
-              select: { business_name: true, user: { select: { first_name: true, last_name: true } } },
-            },
-          },
-          orderBy: { created_at: 'desc' },
-          take: 5,
-        }),
-      ]);
+    // Optimized: Single raw query to get all statistics
+    const [basicStats] = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        (SELECT COUNT(*) FROM jobs WHERE customer_id = ${customer.id} AND status = 'new') as new_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE customer_id = ${customer.id} AND status = 'in_progress') as in_progress_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE customer_id = ${customer.id} AND status = 'completed') as completed_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE customer_id = ${customer.id} AND status = 'paid') as paid_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE customer_id = ${customer.id} AND status = 'cancelled') as cancelled_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE customer_id = ${customer.id} AND status = 'rejected_by_sp') as rejected_jobs,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments p 
+         JOIN jobs j ON p.job_id = j.id 
+         WHERE j.customer_id = ${customer.id} AND p.status = 'received') as total_spent,
+        (SELECT COUNT(*) FROM jobs j 
+         WHERE j.customer_id = ${customer.id} AND j.status = 'paid' 
+         AND NOT EXISTS (SELECT 1 FROM ratings_feedback rf WHERE rf.job_id = j.id)) as pending_feedback
+    `;
+
+    // Get recent jobs (separate query for complex joins)
+    const recentJobs = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        j.id, j.status, j.price, j.created_at,
+        s.name as service_name,
+        sp.business_name,
+        u.first_name as provider_first_name,
+        u.last_name as provider_last_name
+      FROM jobs j
+      JOIN services s ON j.service_id = s.id
+      JOIN service_providers sp ON j.provider_id = sp.id
+      JOIN users u ON sp.user_id = u.id
+      WHERE j.customer_id = ${customer.id}
+      ORDER BY j.created_at DESC
+      LIMIT 5
+    `;
+
+    // Get recent feedback (separate query for complex joins)
+    const recentFeedback = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        rf.id, rf.rating, rf.feedback, rf.created_at,
+        sp.business_name,
+        u.first_name as provider_first_name,
+        u.last_name as provider_last_name
+      FROM ratings_feedback rf
+      JOIN service_providers sp ON rf.provider_id = sp.id
+      JOIN users u ON sp.user_id = u.id
+      WHERE rf.customer_id = ${customer.id}
+      ORDER BY rf.created_at DESC
+      LIMIT 5
+    `;
+
+    const stats = basicStats;
 
     const jobCounts = {
-      new: 0,
-      in_progress: 0,
-      completed: 0,
-      paid: 0,
-      cancelled: 0,
-      rejected_by_sp: 0,
+      new: Number(stats.new_jobs),
+      in_progress: Number(stats.in_progress_jobs),
+      completed: Number(stats.completed_jobs),
+      paid: Number(stats.paid_jobs),
+      cancelled: Number(stats.cancelled_jobs),
+      rejected_by_sp: Number(stats.rejected_jobs),
     };
-
-    jobStats.forEach((stat) => {
-      jobCounts[stat.status] = stat._count;
-    });
 
     return {
       summary: {
         totalJobs: Object.values(jobCounts).reduce((sum, count) => sum + count, 0),
-        totalSpent: totalSpent._sum.amount ? Number(totalSpent._sum.amount) : 0,
-        pendingFeedback,
+        totalSpent: Number(stats.total_spent),
+        pendingFeedback: Number(stats.pending_feedback),
       },
       jobs: jobCounts,
       recentJobs: recentJobs.map((job) => ({
-        id: job.id,
-        service: job.service.name,
-        provider:
-          job.service_provider.business_name ||
-          `${job.service_provider.user.first_name} ${job.service_provider.user.last_name}`,
+        id: Number(job.id),
+        service: job.service_name,
+        provider: job.business_name || `${job.provider_first_name} ${job.provider_last_name}`,
         status: job.status,
         price: Number(job.price),
         createdAt: job.created_at,
       })),
       recentFeedback: recentFeedback.map((feedback) => ({
-        id: feedback.id,
-        rating: feedback.rating,
+        id: Number(feedback.id),
+        rating: Number(feedback.rating),
         feedback: feedback.feedback,
-        provider:
-          feedback.provider.business_name ||
-          `${feedback.provider.user.first_name} ${feedback.provider.user.last_name}`,
+        provider: feedback.business_name || `${feedback.provider_first_name} ${feedback.provider_last_name}`,
         createdAt: feedback.created_at,
       })),
     };
