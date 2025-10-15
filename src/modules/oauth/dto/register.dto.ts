@@ -68,13 +68,21 @@ export class RegisterDto {
   @IsNotEmpty()
   role: UserRole;
 
-  @ApiProperty({
-    description: 'Region (required for CUSTOMER and PROVIDER roles)',
-    example: 'New York',
+  @ApiPropertyOptional({
+    description: 'City (derived from ZIP if not provided)',
+    example: 'Dallas',
   })
   @IsString()
-  @IsNotEmpty()
-  region: string;
+  @IsOptional()
+  city?: string;
+
+  @ApiPropertyOptional({
+    description: 'State (2-letter, derived from ZIP if not provided)',
+    example: 'TX',
+  })
+  @IsString()
+  @IsOptional()
+  state?: string;
 
   @ApiPropertyOptional({
     description: 'Specific area within region (required for LSM role, optional for others)',
@@ -101,8 +109,7 @@ export class RegisterDto {
   address?: string;
 
   @ApiPropertyOptional({
-    description: 'Location (required for PROVIDER role)',
-    example: 'New York, NY',
+    description: 'Deprecated: will be removed after migration',
   })
   @IsString()
   @IsOptional()

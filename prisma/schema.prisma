@@ -32,6 +32,8 @@ model customers {
   user_id          Int                @unique
   address          String
   zipcode          String?
+  city             String?
+  state            String?
   created_at       DateTime           @default(now())
   region           String
   status           CustomerStatus     @default(active)
@@ -50,6 +52,8 @@ model service_providers {
   experience            Int
   description           String?
   location              String
+  city                  String?
+  state                 String?
   zipcode               String?
   rating                Decimal                  @default(0.0) @db.Decimal(3, 2)
   tier                  String                   @default("Bronze")
