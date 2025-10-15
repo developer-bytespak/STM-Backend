@@ -1,5 +1,6 @@
 import { IsObject, IsNumber, IsString, IsOptional, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export class NegotiateJobDto {
   @ApiProperty({
@@ -18,6 +19,7 @@ export class NegotiateJobDto {
   })
   @IsNumber()
   @IsOptional()
+  @Type(() => Number)
   editedPrice?: number;
 
   @ApiProperty({

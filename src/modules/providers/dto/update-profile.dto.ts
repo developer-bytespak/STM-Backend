@@ -7,6 +7,7 @@ import {
   Max,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+  import { Type } from 'class-transformer';
 
 export class UpdateProfileDto {
   @ApiProperty({
@@ -44,6 +45,7 @@ export class UpdateProfileDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Type(() => Number)
   minPrice?: number;
 
   @ApiProperty({
@@ -54,6 +56,7 @@ export class UpdateProfileDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Type(() => Number)
   maxPrice?: number;
 
   @ApiProperty({
@@ -65,6 +68,7 @@ export class UpdateProfileDto {
   @Min(0)
   @Max(50)
   @IsOptional()
+  @Type(() => Number)
   experience?: number;
 
   @ApiProperty({
