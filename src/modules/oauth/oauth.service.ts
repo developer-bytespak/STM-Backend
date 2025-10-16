@@ -595,6 +595,12 @@ export class OAuthService {
             },
           },
         });
+        
+        // Add zipCode field for customer profile
+        if (roleSpecificData) {
+          roleSpecificData.zipCode = roleSpecificData.zipcode || '';
+          roleSpecificData.zip_code = roleSpecificData.zipcode || '';
+        }
         break;
 
       case 'service_provider':
@@ -658,6 +664,17 @@ export class OAuthService {
             },
           },
         });
+        
+        // Add zipCode field for service provider profile
+        if (roleSpecificData) {
+          // Use primary zipcode from service_areas, fallback to provider's zipcode
+          const primaryZipcode = roleSpecificData.service_areas?.find(area => area.is_primary)?.zipcode;
+          const fallbackZipcode = roleSpecificData.zipcode;
+          const finalZipcode = primaryZipcode || fallbackZipcode || '';
+          
+          roleSpecificData.zipCode = finalZipcode;
+          roleSpecificData.zip_code = finalZipcode;
+        }
         break;
 
       case 'local_service_manager':
@@ -672,6 +689,42 @@ export class OAuthService {
             },
           },
         });
+        
+        // Add zipCode field for LSM profile (LSMs don't have zipcode in schema)
+        if (roleSpecificData) {
+          // Get zipcode from first service provider in their region, or use region-based default
+          const regionZipcodeMap = {
+            'Texas': '75001',
+            'TX': '75001',
+            'Oregon': '97201',
+            'OR': '97201',
+            'California': '90210',
+            'CA': '90210',
+            'New York': '10001',
+            'NY': '10001',
+            'Florida': '33101',
+            'FL': '33101',
+          };
+          
+          const defaultZipcode = regionZipcodeMap[roleSpecificData.region] || '75001';
+          
+          // Try to get zipcode from first service provider in this LSM's region
+          const firstProvider = await this.prisma.service_providers.findFirst({
+            where: { lsm_id: roleSpecificData.id },
+            include: {
+              service_areas: {
+                where: { is_primary: true },
+                select: { zipcode: true },
+              },
+            },
+          });
+          
+          const providerZipcode = firstProvider?.service_areas?.[0]?.zipcode || firstProvider?.zipcode;
+          const finalZipcode = providerZipcode || defaultZipcode;
+          
+          roleSpecificData.zipCode = finalZipcode;
+          roleSpecificData.zip_code = finalZipcode;
+        }
         break;
 
       case 'admin':

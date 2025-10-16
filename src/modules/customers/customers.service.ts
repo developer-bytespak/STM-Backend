@@ -559,6 +559,7 @@ export class CustomersService {
         },
         chats: { select: { id: true } },
         payment: true,
+        feedbacks: true, // Include feedbacks to check if feedback already submitted
       },
     });
 
@@ -607,7 +608,7 @@ export class CustomersService {
         canApproveEdits: job.pending_approval === true,
         canCloseDeal: job.status === 'new' && job.sp_accepted === true,
         canCancel: ['new', 'in_progress'].includes(job.status),
-        canGiveFeedback: job.status === 'paid',
+        canGiveFeedback: job.status === 'paid' && job.feedbacks.length === 0, // Only if no feedback submitted yet
       },
     };
   }
