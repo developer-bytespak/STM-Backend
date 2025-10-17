@@ -1,14 +1,20 @@
 import {
   Controller,
   Get,
+  Post,
   Param,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
@@ -49,6 +55,19 @@ export class ChatController {
   }
 
   /**
+   * Get all chats for LSM (Local Service Manager)
+   */
+  @Get('lsm/chats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LSM)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all chats for current LSM' })
+  @ApiResponse({ status: 200, description: 'Chats retrieved successfully' })
+  async getLSMChats(@CurrentUser('id') userId: number) {
+    return this.chatService.getLSMChats(userId);
+  }
+
+  /**
    * Get messages for a specific chat
    * Used for loading message history when opening a chat
    */
@@ -65,6 +84,48 @@ export class ChatController {
     @Param('id') chatId: string,
   ) {
     return this.chatService.getChatMessages(userId, chatId, userRole);
+  }
+
+  /**
+   * Upload files for chat
+   * Returns URLs of uploaded files that can be sent as messages
+   */
+  @Post('chat/upload-files')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload files for chat messages' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Files uploaded successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['data:application/pdf;base64,JVBERi0xLj...', 'data:image/png;base64,iVBORw0KGgo...']
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Invalid file or validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @UseInterceptors(FilesInterceptor('files', 10)) // Allow up to 10 files
+  async uploadChatFiles(
+    @CurrentUser('id') userId: number,
+    @UploadedFiles() files: Array<{
+      buffer: Buffer;
+      originalname: string;
+      mimetype: string;
+      size: number;
+    }>,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files provided');
+    }
+
+    return this.chatService.uploadChatFiles(userId, files);
   }
 
   // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)

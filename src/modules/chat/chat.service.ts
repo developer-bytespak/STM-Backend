@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -139,6 +140,104 @@ export class ChatService {
   }
 
   /**
+   * Get all chats for an LSM (Local Service Manager)
+   */
+  async getLSMChats(userId: number) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!lsm) {
+      throw new NotFoundException('LSM profile not found');
+    }
+
+    const chats = await this.prisma.chat.findMany({
+      where: {
+        lsm_id: lsm.id,
+        lsm_joined: true, // Only show chats LSM has joined
+        is_active: true,
+        is_deleted: false,
+      },
+      include: {
+        job: {
+          include: {
+            service: {
+              select: {
+                name: true,
+                category: true,
+              },
+            },
+          },
+        },
+        customer: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                profile_picture: true,
+              },
+            },
+          },
+        },
+        service_provider: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+                profile_picture: true,
+              },
+            },
+          },
+        },
+        local_service_manager: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+              },
+            },
+          },
+        },
+        messages: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { lsm_joined_at: 'desc' }, // Most recently joined first
+    });
+
+    return chats.map((chat) => ({
+      id: chat.id,
+      job: {
+        id: chat.job?.id,
+        service: chat.job?.service,
+        status: chat.job?.status,
+      },
+      customer: {
+        name: `${chat.customer.user.first_name} ${chat.customer.user.last_name}`,
+        profilePicture: chat.customer.user.profile_picture,
+      },
+      provider: {
+        id: chat.service_provider.id,
+        businessName: chat.service_provider.business_name,
+        user: chat.service_provider.user,
+      },
+      localServiceManager: chat.local_service_manager ? {
+        id: chat.local_service_manager.id,
+        user: chat.local_service_manager.user,
+      } : undefined,
+      lsm_invited: chat.lsm_invited,
+      lsm_joined: chat.lsm_joined,
+      lsm_joined_at: chat.lsm_joined_at,
+      lastMessage: chat.messages[0] || null,
+      created_at: chat.created_at,
+    }));
+  }
+
+  /**
    * Get messages for a specific chat
    */
   async getChatMessages(userId: number, chatId: string, userRole: string) {
@@ -155,6 +254,11 @@ export class ChatService {
             user: { select: { id: true, first_name: true, last_name: true } },
           },
         },
+        local_service_manager: {
+          include: {
+            user: { select: { id: true, first_name: true, last_name: true } },
+          },
+        },
       },
     });
 
@@ -165,8 +269,9 @@ export class ChatService {
     // Verify user has access to this chat
     const isCustomer = chat.customer.user.id === userId;
     const isProvider = chat.service_provider.user.id === userId;
+    const isLSM = chat.local_service_manager && chat.local_service_manager.user.id === userId;
 
-    if (!isCustomer && !isProvider) {
+    if (!isCustomer && !isProvider && !isLSM) {
       throw new ForbiddenException('You do not have access to this chat');
     }
 
@@ -181,6 +286,8 @@ export class ChatService {
         return `${chat.customer.user.first_name} ${chat.customer.user.last_name}`;
       } else if (senderType === 'service_provider' && chat.service_provider.user.id === senderId) {
         return `${chat.service_provider.user.first_name} ${chat.service_provider.user.last_name}`;
+      } else if (senderType === 'local_service_manager' && chat.local_service_manager && chat.local_service_manager.user.id === senderId) {
+        return `${chat.local_service_manager.user.first_name} ${chat.local_service_manager.user.last_name}`;
       }
       return 'Unknown User';
     };
@@ -197,6 +304,77 @@ export class ChatService {
         created_at: msg.created_at,
       })),
     };
+  }
+
+  /**
+   * Upload files for chat
+   * Returns base64 data URLs that can be sent as messages
+   */
+  async uploadChatFiles(
+    userId: number,
+    files: Array<{
+      buffer: Buffer;
+      originalname: string;
+      mimetype: string;
+      size: number;
+    }>,
+  ) {
+    // Validate that user exists (basic auth check)
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const urls: string[] = [];
+
+    // Process each file
+    for (const file of files) {
+      // Validate file
+      if (!file) {
+        throw new BadRequestException('Invalid file');
+      }
+
+      // Validate file size (max 10MB per file)
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        throw new BadRequestException(
+          `File "${file.originalname}" is too large. Maximum size is 10MB`,
+        );
+      }
+
+      // Validate file type
+      const allowedTypes = [
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'image/jpg',
+        'image/gif',
+        'image/webp',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'text/plain',
+      ];
+
+      if (!allowedTypes.includes(file.mimetype)) {
+        throw new BadRequestException(
+          `File type "${file.mimetype}" is not allowed. Supported types: PDF, images, documents, and text files`,
+        );
+      }
+
+      // For now, store file as base64 data URL
+      // In production, you should upload to S3/cloud storage and return a public URL
+      const base64File = file.buffer.toString('base64');
+      const dataUrl = `data:${file.mimetype};base64,${base64File}`;
+      
+      urls.push(dataUrl);
+    }
+
+    return { urls };
   }
 
   // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
