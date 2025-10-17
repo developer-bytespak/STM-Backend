@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -19,8 +20,8 @@ async function bootstrap() {
 
   // Enable CORS for frontend
   const allowedOrigins = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
+    'http://localhost:3000', // Frontend on port 3000
+    'http://127.0.0.1:3000', // Frontend on port 3000
     'https://*.vercel.app', // Allow all Vercel deployments
     'https://stm-frontend.vercel.app', // Your specific Vercel domain
   ];
@@ -54,6 +55,35 @@ async function bootstrap() {
     credentials: true, // Allow cookies/auth headers
   });
 
+  // Setup Swagger Documentation
+  const config = new DocumentBuilder()
+    .setTitle('STM Backend API')
+    .setDescription('Service Provider Management System API Documentation')
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Enter JWT token',
+        in: 'header',
+      },
+      'JWT-auth',
+    )
+    .addTag('admin-offices', 'Admin Office Management')
+    .addTag('provider-offices', 'Provider Office Browsing')
+    .addTag('admin-bookings', 'Admin Booking Management')
+    .addTag('provider-bookings', 'Provider Booking Management')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
+
   // Enable graceful shutdown via Prisma
   const prismaService = app.get(PrismaService);
   await prismaService.enableShutdownHooks(app);
@@ -66,5 +96,6 @@ async function bootstrap() {
   // Use console to ensure message appears even with reduced Nest logger levels
   // eslint-disable-next-line no-console
   console.log(`STM Backend running at port ${port}`);
+  console.log(`Swagger docs available at http://localhost:${port}/api/docs`);
 }
 bootstrap();
