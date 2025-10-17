@@ -96,6 +96,5 @@ async function bootstrap() {
   // Use console to ensure message appears even with reduced Nest logger levels
   // eslint-disable-next-line no-console
   console.log(`STM Backend running at port ${port}`);
-  console.log(`Swagger docs available at http://localhost:${port}/api/docs`);
 }
 bootstrap();

@@ -733,6 +733,14 @@ export class ProvidersService {
           },
         });
 
+        // Update LSM closed deals count
+        await tx.local_service_managers.update({
+          where: { id: provider.lsm_id },
+          data: {
+            closed_deals_count: { increment: 1 },
+          },
+        });
+
         // Notify customer
         await tx.notifications.create({
           data: {
@@ -844,6 +852,12 @@ export class ProvidersService {
             amount: true,
           },
         },
+        chats: {
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
       },
       orderBy: { created_at: 'desc' },
       skip: (page - 1) * finalLimit,
@@ -865,6 +879,7 @@ export class ProvidersService {
         scheduledAt: job.scheduled_at,
         completedAt: job.completed_at,
         createdAt: job.created_at,
+        chatId: job.chats.length > 0 ? job.chats[0].id : null,
       })),
       pagination: {
         total,

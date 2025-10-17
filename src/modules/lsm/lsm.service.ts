@@ -1525,6 +1525,9 @@ export class LsmService {
   async joinDisputeChat(userId: number, disputeId: number) {
     const lsm = await this.prisma.local_service_managers.findUnique({
       where: { user_id: userId },
+      include: {
+        user: true,
+      },
     });
 
     if (!lsm) {
@@ -1537,7 +1540,11 @@ export class LsmService {
         job: {
           include: {
             service_provider: true,
-            chats: true,
+            chats: {
+              include: {
+                customer: true,
+              },
+            },
           },
         },
       },
@@ -1572,6 +1579,28 @@ export class LsmService {
         lsm_id: lsm.id,
         lsm_joined: true,
         lsm_joined_at: new Date(),
+      },
+    });
+
+    // Notify customer that LSM has joined
+    await this.prisma.notifications.create({
+      data: {
+        recipient_type: 'customer',
+        recipient_id: chat.customer.user_id,
+        type: 'system',
+        title: 'LSM Joined Dispute Chat',
+        message: `Local Service Manager ${lsm.user.first_name} ${lsm.user.last_name} has joined the dispute chat for job #${dispute.job_id}. They will help resolve the issue.`,
+      },
+    });
+
+    // Notify service provider that LSM has joined
+    await this.prisma.notifications.create({
+      data: {
+        recipient_type: 'service_provider',
+        recipient_id: dispute.job.service_provider.user_id,
+        type: 'system',
+        title: 'LSM Joined Dispute Chat',
+        message: `Local Service Manager ${lsm.user.first_name} ${lsm.user.last_name} has joined the dispute chat for job #${dispute.job_id}. They will help resolve the issue.`,
       },
     });
 
@@ -1769,7 +1798,9 @@ export class LsmService {
       take: finalLimit,
     });
 
-    const totalValue = jobs.reduce((sum, job) => sum + Number(job.price), 0);
+    const totalValue = jobs
+      .filter(job => !['rejected_by_sp', 'cancelled'].includes(job.status))
+      .reduce((sum, job) => sum + Number(job.price), 0);
 
     return {
       data: jobs.map((job) => ({

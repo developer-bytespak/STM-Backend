@@ -2394,8 +2394,10 @@ export class AdminService {
       take: finalLimit,
     });
 
-    // Calculate summary
-    const totalValue = jobs.reduce((sum, job) => sum + Number(job.price), 0);
+    // Calculate summary - exclude rejected and cancelled jobs
+    const totalValue = jobs
+      .filter(job => !['rejected_by_sp', 'cancelled'].includes(job.status))
+      .reduce((sum, job) => sum + Number(job.price), 0);
 
     return {
       data: jobs.map((job) => ({
