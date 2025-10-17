@@ -9,23 +9,25 @@ datasource db {
 }
 
 model users {
-  id                    Int                     @id @default(autoincrement())
-  first_name            String
-  last_name             String
-  email                 String                  @unique
-  phone_number          String
-  role                  Role
-  password              String
-  refresh_token         String?
-  is_email_verified     Boolean                 @default(false)
-  last_login            DateTime?
-  profile_picture       String?
-  created_at            DateTime                @default(now())
-  updated_at            DateTime                @updatedAt
-  admin                 admin?
-  customer              customers?
-  local_service_manager local_service_managers?
-  service_provider      service_providers?
+  id                       Int                     @id @default(autoincrement())
+  first_name               String
+  last_name                String
+  email                    String                  @unique
+  phone_number             String
+  role                     Role
+  password                 String
+  refresh_token            String?
+  is_email_verified        Boolean                 @default(false)
+  last_login               DateTime?
+  profile_picture          String?
+  created_at               DateTime                @default(now())
+  updated_at               DateTime                @updatedAt
+  admin                    admin?
+  customer                 customers?
+  local_service_manager    local_service_managers?
+  service_provider         service_providers?
+  office_spaces_created    office_spaces[]         @relation("OfficeSpacesCreated")
+  office_bookings_provider office_bookings[]       @relation("ProviderBookings")
 }
 
 model customers {
@@ -441,4 +443,74 @@ model platform_settings {
   created_at                   DateTime @default(now())
 
   @@index([created_at])
+}
+
+model office_spaces {
+  id             String            @id @default(uuid()) @db.Uuid
+  name           String            @db.VarChar(255)
+  description    String
+  type           String            @default("private_office") @db.VarChar(50)
+  status         OfficeStatus      @default(available)
+  address        String
+  city           String            @db.VarChar(100)
+  state          String            @db.VarChar(50)
+  zip_code       String            @db.VarChar(10)
+  capacity       Int
+  area_sqft      Int
+  daily_price    Decimal           @db.Decimal(10, 2)
+  availability   Json              @default("{}")
+  rating         Decimal           @default(0.00) @db.Decimal(3, 2)
+  reviews_count  Int               @default(0)
+  total_bookings Int               @default(0)
+  images         Json              @default("[]")
+  created_at     DateTime          @default(now())
+  updated_at     DateTime          @updatedAt
+  created_by     Int?
+  bookings       office_bookings[]
+  creator        users?            @relation("OfficeSpacesCreated", fields: [created_by], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([city])
+}
+
+model office_bookings {
+  id               String        @id @default(uuid()) @db.Uuid
+  office_space_id  String        @db.Uuid
+  provider_id      Int
+  office_name      String        @db.VarChar(255)
+  provider_name    String        @db.VarChar(255)
+  provider_email   String        @db.VarChar(255)
+  start_date       DateTime
+  end_date         DateTime
+  duration         Int
+  duration_type    String        @default("daily") @db.VarChar(50)
+  daily_rate       Decimal       @db.Decimal(10, 2)
+  total_amount     Decimal       @db.Decimal(10, 2)
+  status           BookingStatus @default(pending)
+  payment_status   String        @default("pending") @db.VarChar(50)
+  payment_method   String?       @db.VarChar(100)
+  transaction_id   String?       @db.VarChar(255)
+  special_requests String?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+  office_space     office_spaces @relation(fields: [office_space_id], references: [id], onDelete: Cascade)
+  provider         users         @relation("ProviderBookings", fields: [provider_id], references: [id], onDelete: Cascade)
+
+  @@index([office_space_id])
+  @@index([provider_id])
+  @@index([status])
+}
+
+enum OfficeStatus {
+  available
+  occupied
+  booked
+  maintenance
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
 }

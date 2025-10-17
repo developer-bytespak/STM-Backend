@@ -1,0 +1,354 @@
+{
+  "info": {
+    "name": "Office Booking APIs",
+    "description": "Complete collection for office booking system APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{admin_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login Provider",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"provider@example.com\",\n  \"password\": \"provider123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Admin Office Management",
+      "item": [
+        {
+          "name": "Create Office",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Premium Office Space\",\n  \"description\": \"Modern office with great amenities\",\n  \"type\": \"private_office\",\n  \"location\": {\n    \"address\": \"123 Business St\",\n    \"city\": \"New York\",\n    \"state\": \"NY\",\n    \"zipCode\": \"10001\"\n  },\n  \"capacity\": 10,\n  \"area\": 1200,\n  \"dailyPrice\": 150.00,\n  \"availability\": {\n    \"monday\": {\"start\": \"09:00\", \"end\": \"18:00\"},\n    \"tuesday\": {\"start\": \"09:00\", \"end\": \"18:00\"},\n    \"wednesday\": {\"start\": \"09:00\", \"end\": \"18:00\"},\n    \"thursday\": {\"start\": \"09:00\", \"end\": \"18:00\"},\n    \"friday\": {\"start\": \"09:00\", \"end\": \"18:00\"}\n  },\n  \"images\": [\n    \"https://example.com/office1.jpg\",\n    \"https://example.com/office2.jpg\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/offices",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "offices"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List All Offices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/offices",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "offices"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Office Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/offices/{{office_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "offices", "{{office_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Office",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Office Name\",\n  \"description\": \"Updated description\",\n  \"dailyPrice\": 175.00,\n  \"status\": \"available\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/offices/{{office_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "offices", "{{office_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Office",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/offices/{{office_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "offices", "{{office_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👥 Provider Office Browsing",
+      "item": [
+        {
+          "name": "Browse Available Offices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{provider_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/provider/offices",
+              "host": ["{{base_url}}"],
+              "path": ["provider", "offices"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Office Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{provider_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/provider/offices/{{office_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["provider", "offices", "{{office_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📅 Admin Booking Management",
+      "item": [
+        {
+          "name": "List All Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/bookings",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "bookings"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Booking",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/bookings/{{booking_id}}/confirm",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "bookings", "{{booking_id}}", "confirm"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Booking",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/bookings/{{booking_id}}/complete",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "bookings", "{{booking_id}}", "complete"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📝 Provider Booking Management",
+      "item": [
+        {
+          "name": "Create Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{provider_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"officeSpaceId\": \"{{office_id}}\",\n  \"startDate\": \"2024-01-15T09:00:00Z\",\n  \"endDate\": \"2024-01-15T18:00:00Z\",\n  \"specialRequests\": \"Need parking space\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/provider/bookings",
+              "host": ["{{base_url}}"],
+              "path": ["provider", "bookings"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{provider_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/provider/bookings",
+              "host": ["{{base_url}}"],
+              "path": ["provider", "bookings"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Booking Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{provider_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/provider/bookings/{{booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["provider", "bookings", "{{booking_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
