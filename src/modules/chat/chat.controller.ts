@@ -1,8 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
-  Body,
   Param,
   UseGuards,
 } from '@nestjs/common';
@@ -13,7 +11,6 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
-import { SendMessageDto } from './dto/send-message.dto';
 import { JwtAuthGuard } from '../oauth/guards/jwt-auth.guard';
 import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
@@ -53,11 +50,12 @@ export class ChatController {
 
   /**
    * Get messages for a specific chat
+   * Used for loading message history when opening a chat
    */
   @Get('chat/:id/messages')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all messages in a chat' })
+  @ApiOperation({ summary: 'Get all messages in a chat (message history)' })
   @ApiResponse({ status: 200, description: 'Messages retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Chat not found' })
@@ -69,22 +67,6 @@ export class ChatController {
     return this.chatService.getChatMessages(userId, chatId, userRole);
   }
 
-  /**
-   * Send a message in a chat
-   */
-  @Post('chat/:id/messages')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Send a message in a chat' })
-  @ApiResponse({ status: 201, description: 'Message sent successfully' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Chat not found' })
-  async sendMessage(
-    @CurrentUser('id') userId: number,
-    @CurrentUser('role') userRole: string,
-    @Param('id') chatId: string,
-    @Body() dto: SendMessageDto,
-  ) {
-    return this.chatService.sendMessage(userId, chatId, dto, userRole);
-  }
+  // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
+  // Use the 'send_message' Socket.IO event for real-time messaging
 }

@@ -5,8 +5,13 @@ import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  // Dedicated client for real-time operations (Socket.IO, chat)
+  // Uses direct connection (port 5432) for better performance
+  public readonly realtimeClient: PrismaClient;
+
   constructor() {
-    // Build database URL with PgBouncer parameters
+    // PRIMARY CLIENT: Transaction pooler (port 6543)
+    // Use for: REST API endpoints, bulk operations, admin operations
     const databaseUrl = process.env.DATABASE_URL || '';
     const separator = databaseUrl.includes('?') ? '&' : '?';
     const connectionString = `${databaseUrl}${separator}pgbouncer=true&statement_cache_size=0&connection_limit=8&pool_timeout=10`;
@@ -23,14 +28,32 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         },
       },
     });
+
+    // REALTIME CLIENT: Direct connection (port 5432)
+    // Use for: Socket.IO chat messages, real-time operations
+    // Benefits: Persistent connections, no pooler overhead, 2-3x faster
+    const directUrl = process.env.DIRECT_URL || databaseUrl.replace(':6543', ':5432');
+    
+    this.realtimeClient = new PrismaClient({
+      log: ['error'],
+      datasources: {
+        db: {
+          url: directUrl,
+        },
+      },
+    });
   }
 
   async onModuleInit() {
     await this.$connect();
+    await this.realtimeClient.$connect();
+    console.log('✅ Connected to transaction pooler (REST API)');
+    console.log('✅ Connected to direct connection (Real-time/Socket.IO)');
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
+    await this.realtimeClient.$disconnect();
   }
 
   async enableShutdownHooks(app: INestApplication) {

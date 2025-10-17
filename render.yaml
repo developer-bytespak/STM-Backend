@@ -6,6 +6,7 @@ services:
     plan: free
     buildCommand: npm install && npx prisma generate && npm run build
     startCommand: node dist/main
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: 20
