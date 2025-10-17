@@ -64,4 +64,13 @@ export class CreateJobDto {
   @IsOptional()
   @Type(() => Number)
   inPersonVisitCost?: number;
+
+  @ApiPropertyOptional({
+    description: 'Customer budget/price for the service',
+    example: 150.00,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  customerBudget?: number;
 }

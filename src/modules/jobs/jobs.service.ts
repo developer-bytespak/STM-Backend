@@ -106,6 +106,7 @@ export class JobsService {
           status: 'new',
           location: dto.location,
           answers_json: jobAnswers,
+          price: dto.customerBudget || 0, // Save customer's budget as job price
           scheduled_at: dto.preferredDate ? new Date(dto.preferredDate) : null,
           response_deadline: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
         },
@@ -178,6 +179,10 @@ export class JobsService {
     let message = `📋 New ${serviceName} Request\n\n`;
     message += `📍 Location: ${dto.location}\n`;
     message += `📮 Zipcode: ${dto.zipcode}\n`;
+    
+    if (dto.customerBudget) {
+      message += `💰 Customer Budget: $${dto.customerBudget}\n`;
+    }
     
     if (dto.preferredDate) {
       message += `📅 Preferred Date: ${dto.preferredDate}\n`;
@@ -326,6 +331,9 @@ export class JobsService {
           response_deadline: new Date(Date.now() + 60 * 60 * 1000),
           rejection_reason: null,
           sp_accepted: false, // Reset acceptance
+          edited_answers: null, // Clear any previous negotiations
+          pending_approval: false, // Clear pending approvals
+          // Note: job.price (customer budget) is preserved
         },
       });
 
@@ -379,6 +387,7 @@ export class JobsService {
             location: job.location,
             zipcode: '', // Not stored in job, would need to get from customer
             preferredDate: job.scheduled_at?.toISOString(),
+            customerBudget: Number(job.price), // Include customer budget
           }),
         },
       });
