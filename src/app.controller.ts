@@ -9,4 +9,17 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  /**
+   * Health check endpoint for Render and monitoring
+   */
+  @Get('health')
+  healthCheck() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'STM Backend',
+      environment: process.env.NODE_ENV || 'development',
+    };
+  }
 }

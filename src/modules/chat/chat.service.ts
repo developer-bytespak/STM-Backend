@@ -4,7 +4,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { SendMessageDto } from './dto/send-message.dto';
 
 @Injectable()
 export class ChatService {
@@ -148,12 +147,12 @@ export class ChatService {
       include: {
         customer: {
           include: {
-            user: { select: { id: true } },
+            user: { select: { id: true, first_name: true, last_name: true } },
           },
         },
         service_provider: {
           include: {
-            user: { select: { id: true } },
+            user: { select: { id: true, first_name: true, last_name: true } },
           },
         },
       },
@@ -176,12 +175,23 @@ export class ChatService {
       orderBy: { created_at: 'asc' },
     });
 
+    // Helper function to get sender name
+    const getSenderName = (senderId: number, senderType: string): string => {
+      if (senderType === 'customer' && chat.customer.user.id === senderId) {
+        return `${chat.customer.user.first_name} ${chat.customer.user.last_name}`;
+      } else if (senderType === 'service_provider' && chat.service_provider.user.id === senderId) {
+        return `${chat.service_provider.user.first_name} ${chat.service_provider.user.last_name}`;
+      }
+      return 'Unknown User';
+    };
+
     return {
       chatId: chat.id,
       messages: messages.map((msg) => ({
         id: msg.id,
         sender_type: msg.sender_type,
         sender_id: msg.sender_id,
+        sender_name: getSenderName(msg.sender_id, msg.sender_type),
         message: msg.message,
         message_type: msg.message_type,
         created_at: msg.created_at,
@@ -189,92 +199,6 @@ export class ChatService {
     };
   }
 
-  /**
-   * Send a message in a chat
-   */
-  async sendMessage(
-    userId: number,
-    chatId: string,
-    dto: SendMessageDto,
-    userRole: string,
-  ) {
-    const chat = await this.prisma.chat.findUnique({
-      where: { id: chatId },
-      include: {
-        customer: {
-          include: {
-            user: { select: { id: true } },
-          },
-        },
-        service_provider: {
-          include: {
-            user: { select: { id: true } },
-          },
-        },
-      },
-    });
-
-    if (!chat) {
-      throw new NotFoundException('Chat not found');
-    }
-
-    if (!chat.is_active) {
-      throw new ForbiddenException('This chat is no longer active');
-    }
-
-    // Verify user has access
-    const isCustomer = chat.customer.user.id === userId;
-    const isProvider = chat.service_provider.user.id === userId;
-
-    if (!isCustomer && !isProvider) {
-      throw new ForbiddenException('You do not have access to this chat');
-    }
-
-    // Determine sender type based on role
-    let senderType: 'customer' | 'service_provider';
-    if (userRole === 'customer') {
-      senderType = 'customer';
-    } else if (userRole === 'service_provider') {
-      senderType = 'service_provider';
-    } else {
-      throw new ForbiddenException('Invalid user role for chat');
-    }
-
-    // Create message
-    const message = await this.prisma.messages.create({
-      data: {
-        chat_id: chatId,
-        sender_type: senderType,
-        sender_id: userId,
-        message: dto.message,
-        message_type: dto.message_type || 'text',
-      },
-    });
-
-    // Create notification for recipient
-    const recipientId =
-      senderType === 'customer'
-        ? chat.service_provider.user.id
-        : chat.customer.user.id;
-    const recipientType =
-      senderType === 'customer' ? 'service_provider' : 'customer';
-
-    await this.prisma.notifications.create({
-      data: {
-        recipient_type: recipientType,
-        recipient_id: recipientId,
-        type: 'message',
-        title: 'New Message',
-        message: dto.message.substring(0, 100), // Preview
-      },
-    });
-
-    return {
-      id: message.id,
-      sender_type: message.sender_type,
-      message: message.message,
-      message_type: message.message_type,
-      created_at: message.created_at,
-    };
-  }
+  // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
+  // Use the 'send_message' Socket.IO event for real-time messaging
 }
