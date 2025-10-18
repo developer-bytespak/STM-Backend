@@ -169,6 +169,14 @@ export class AdminBookingController {
   async completeBooking(@Param('id') id: string) {
     return this.officeService.completeBooking(id);
   }
+
+  @Post('cleanup/orphaned')
+  @ApiOperation({ summary: 'Clean up orphaned bookings (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Orphaned bookings cleaned up successfully' })
+  @HttpCode(HttpStatus.OK)
+  async cleanupOrphanedBookings() {
+    return this.officeService.cleanupOrphanedBookings();
+  }
 }
 
 // ==================== PROVIDER BOOKING CONTROLLER ====================
@@ -208,5 +216,15 @@ export class ProviderBookingController {
   @ApiResponse({ status: 403, description: 'Access denied' })
   async getBookingById(@Param('id') id: string, @CurrentUser() user: any) {
     return this.officeService.getBookingById(id, user.id, user.role);
+  }
+
+  @Put(':id/cancel')
+  @ApiOperation({ summary: 'Cancel a booking (Provider)' })
+  @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  @ApiResponse({ status: 400, description: 'Cannot cancel booking' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not your booking' })
+  async cancelBooking(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.officeService.cancelBooking(id, user.id);
   }
 }
