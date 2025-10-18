@@ -9,6 +9,10 @@ async function bootstrap() {
     logger: ['error', 'warn'] // reduce Nest logs
   });
 
+  // Configure body parser for larger payloads (Base64 images)
+  app.use(require('express').json({ limit: '50mb' }));
+  app.use(require('express').urlencoded({ limit: '50mb', extended: true }));
+
   // Enable validation and transformation
   app.useGlobalPipes(
     new ValidationPipe({

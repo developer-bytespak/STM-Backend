@@ -69,6 +69,61 @@ export class OfficeRealEstateService {
   }
 
   /**
+   * Cancel a booking (Provider only)
+   */
+  async cancelBooking(bookingId: string, providerId: number) {
+    console.log('=== CANCEL BOOKING REQUEST ===');
+    console.log('BookingId:', bookingId);
+    console.log('ProviderId:', providerId);
+
+    // Find the booking
+    const booking = await this.prisma.office_bookings.findUnique({
+      where: { id: bookingId },
+      include: {
+        office_space: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Booking with ID ${bookingId} not found`);
+    }
+
+    // Verify the booking belongs to this provider
+    if (booking.provider_id !== providerId) {
+      throw new ForbiddenException('You can only cancel your own bookings');
+    }
+
+    // Only allow cancellation of pending bookings
+    if (booking.status !== 'pending') {
+      throw new BadRequestException(
+        `Cannot cancel booking with status '${booking.status}'. Only pending bookings can be cancelled.`
+      );
+    }
+
+    // Update booking status to cancelled
+    const updatedBooking = await this.prisma.office_bookings.update({
+      where: { id: bookingId },
+      data: {
+        status: 'cancelled',
+        updated_at: new Date(),
+      },
+    });
+
+    console.log('Booking cancelled successfully:', updatedBooking);
+
+    return {
+      success: true,
+      message: 'Booking cancelled successfully',
+      booking: this.formatBookingResponse(updatedBooking),
+    };
+  }
+
+  /**
    * Get office availability for date picker (Provider)
    */
   async getOfficeAvailability(officeId: string) {
@@ -233,21 +288,72 @@ export class OfficeRealEstateService {
     // Check for active bookings
     if (office.bookings && office.bookings.length > 0) {
       throw new BadRequestException(
-        'Cannot delete office space with active or pending bookings',
+        'Cannot delete office space with active or pending bookings. Please complete or cancel active bookings first.',
       );
     }
 
-    await this.prisma.office_spaces.delete({
-      where: { id },
+    // Use transaction to delete office and all its bookings (including completed/cancelled ones)
+    await this.prisma.$transaction(async (prisma) => {
+      // First, delete all bookings for this office (including completed/cancelled)
+      await prisma.office_bookings.deleteMany({
+        where: {
+          office_space_id: id,
+        },
+      });
+
+      // Then delete the office space
+      await prisma.office_spaces.delete({
+        where: { id },
+      });
     });
 
     return {
       success: true,
-      message: 'Office space deleted successfully',
+      message: 'Office space and all associated bookings deleted successfully',
     };
   }
 
   // ==================== BOOKING MANAGEMENT ====================
+
+  /**
+   * Clean up orphaned bookings (Admin only)
+   * Removes bookings that reference non-existent office spaces
+   */
+  async cleanupOrphanedBookings() {
+    console.log('Starting orphaned bookings cleanup...');
+    
+    // Find all bookings that reference non-existent office spaces
+    const orphanedBookings = await this.prisma.office_bookings.findMany({
+      where: {
+        office_space: null, // This will find bookings where office_space_id doesn't exist
+      },
+    });
+
+    if (orphanedBookings.length === 0) {
+      return {
+        success: true,
+        message: 'No orphaned bookings found',
+        deletedCount: 0,
+      };
+    }
+
+    console.log(`Found ${orphanedBookings.length} orphaned bookings to delete`);
+
+    // Delete orphaned bookings
+    const deleteResult = await this.prisma.office_bookings.deleteMany({
+      where: {
+        office_space: null,
+      },
+    });
+
+    console.log(`Deleted ${deleteResult.count} orphaned bookings`);
+
+    return {
+      success: true,
+      message: `Cleaned up ${deleteResult.count} orphaned bookings`,
+      deletedCount: deleteResult.count,
+    };
+  }
 
   /**
    * Clean up duplicate bookings (Admin only)
