@@ -372,6 +372,7 @@ export class ProvidersService {
         maxPrice: provider.max_price ? Number(provider.max_price) : null,
         experience: provider.experience,
         experienceLevel: provider.experience_level,
+        websiteUrl: provider.website_url,
       },
       status: {
         current: provider.status,
@@ -431,6 +432,7 @@ export class ProvidersService {
       if (dto.minPrice !== undefined) updateData.min_price = dto.minPrice;
       if (dto.maxPrice !== undefined) updateData.maxPrice = dto.maxPrice;
       if (dto.experience !== undefined) updateData.experience = dto.experience;
+      if (dto.websiteUrl !== undefined) updateData.website_url = dto.websiteUrl;
 
       // Update provider
       if (Object.keys(updateData).length > 0) {

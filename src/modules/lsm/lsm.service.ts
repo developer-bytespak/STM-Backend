@@ -714,6 +714,7 @@ export class LsmService {
         experience: provider.experience,
         experienceLevel: provider.experience_level,
         location: provider.location,
+        websiteUrl: provider.website_url,
         serviceAreas: provider.service_areas.map((area) => area.zipcode),
         requestedServices: provider.provider_services.map((ps) => ps.service.name),
         documents: {
