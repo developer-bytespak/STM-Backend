@@ -166,6 +166,14 @@ export class RegisterDto {
   description?: string;
 
   @ApiPropertyOptional({
+    description: 'Provider website URL (for PROVIDER role)',
+    example: 'https://www.example.com',
+  })
+  @IsString()
+  @IsOptional()
+  websiteUrl?: string;
+
+  @ApiPropertyOptional({
     description: 'Array of service zip codes (for PROVIDER role)',
     example: ['10001', '10002', '10003'],
     type: [String],

@@ -81,5 +81,14 @@ export class UpdateProfileDto {
   @IsString({ each: true })
   @IsOptional()
   serviceAreas?: string[];
+
+  @ApiProperty({
+    description: 'Provider website URL',
+    example: 'https://www.example.com',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  websiteUrl?: string;
 }
 

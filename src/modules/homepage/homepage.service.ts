@@ -506,6 +506,7 @@ export class HomepageService {
           state,
           zipCode: primaryZip,
         },
+        websiteUrl: provider.website_url,
         certifications: certifications.length > 0 ? certifications : undefined,
         isAvailable: provider.is_active && activeServices.length > 0,
         // Note: workingHours and reviews would need separate tables in your schema
