@@ -89,6 +89,7 @@ export class ProviderOnboardingService {
     }
 
     // Create document record
+    console.log(`[DOCUMENT UPLOAD] Creating document for provider_id: ${user.service_provider.id}, file: ${file.originalname}`);
     const document = await this.prisma.provider_documents.create({
       data: {
         provider_id: user.service_provider.id,
@@ -100,6 +101,7 @@ export class ProviderOnboardingService {
         status: 'pending',
       },
     });
+    console.log(`[DOCUMENT UPLOAD] Document created with id: ${document.id}`);
 
     return {
       id: document.id,
