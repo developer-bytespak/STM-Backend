@@ -195,6 +195,19 @@ export class ProvidersService {
       throw new NotFoundException('Service provider profile not found');
     }
 
+    // Check if provider is approved - only active providers can access dashboard
+    if (provider.status === 'pending') {
+      throw new ForbiddenException('Your account is pending approval from Local Service Manager');
+    }
+
+    if (provider.status === 'rejected') {
+      throw new ForbiddenException('Your account has been rejected. Please contact support.');
+    }
+
+    if (provider.status !== 'active') {
+      throw new ForbiddenException('Your account is not active. Please contact support.');
+    }
+
     // Optimized: Single raw query to get all statistics
     const [basicStats] = await this.prisma.$queryRaw<any[]>`
       SELECT 
@@ -376,6 +389,7 @@ export class ProvidersService {
       },
       status: {
         current: provider.status,
+        isActive: provider.is_active, // Business availability toggle
         canDeactivate,
         activeJobsCount: provider.jobs.length,
         warnings: provider.warnings,
@@ -421,6 +435,15 @@ export class ProvidersService {
 
     if (!provider) {
       throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Prevent profile editing when status is pending or rejected
+    if (provider.status === 'pending') {
+      throw new ForbiddenException('Cannot edit profile while account is pending approval');
+    }
+
+    if (provider.status === 'rejected') {
+      throw new ForbiddenException('Cannot edit profile while account is rejected. Please re-upload documents to resubmit.');
     }
 
     return await this.prisma.$transaction(async (tx) => {
@@ -491,6 +514,15 @@ export class ProvidersService {
 
     if (!provider) {
       throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Prevent availability toggle when status is pending or rejected
+    if (provider.status === 'pending') {
+      throw new ForbiddenException('Cannot change availability while account is pending approval');
+    }
+
+    if (provider.status === 'rejected') {
+      throw new ForbiddenException('Cannot change availability while account is rejected');
     }
 
     if (dto.status === provider.status) {
