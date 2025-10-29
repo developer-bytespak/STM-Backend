@@ -29,7 +29,7 @@ export class RegisterDto {
     description: 'User phone number',
     example: '+1234567890',
   })
-  @IsPhoneNumber()
+  @IsPhoneNumber('US')
   @IsNotEmpty()
   phoneNumber: string;
 

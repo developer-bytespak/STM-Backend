@@ -551,9 +551,24 @@ export class ProvidersService {
       );
     }
 
-    await this.prisma.service_providers.update({
-      where: { id: provider.id },
-      data: { status: dto.status },
+    // Update provider status and create notification
+    await this.prisma.$transaction(async (tx) => {
+      // Update provider status
+      await tx.service_providers.update({
+        where: { id: provider.id },
+        data: { status: dto.status },
+      });
+
+      // Create notification for the provider
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: provider.user_id,
+          type: 'system',
+          title: dto.status === 'active' ? 'Account Activated' : 'Account Deactivated',
+          message: `You have ${dto.status === 'active' ? 'activated' : 'deactivated'} your account. You are now ${dto.status === 'active' ? 'available' : 'unavailable'} for new job requests.`,
+        },
+      });
     });
 
     return {

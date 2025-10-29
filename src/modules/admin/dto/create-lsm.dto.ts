@@ -46,7 +46,7 @@ export class CreateLsmDto {
     description: 'Phone number',
     example: '+15551234567',
   })
-  @IsPhoneNumber()
+  @IsPhoneNumber('US')
   @IsNotEmpty()
   phoneNumber: string;
 

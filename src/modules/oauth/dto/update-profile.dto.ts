@@ -13,7 +13,7 @@ export class UpdateProfileDto {
   lastName?: string;
 
   @ApiPropertyOptional({ description: 'Phone number' })
-  @IsPhoneNumber()
+  @IsPhoneNumber('US')
   @IsOptional()
   phoneNumber?: string;
 
