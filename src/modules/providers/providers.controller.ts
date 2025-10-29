@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -10,14 +11,20 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import { ProvidersService } from './providers.service';
+import { ProvidersImagesService } from './providers-images.service';
 import { RequestServiceDto } from './dto/request-service.dto';
 import { AddServiceDto } from './dto/add-service.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -33,7 +40,10 @@ import { UserRole } from '../users/enums/user-role.enum';
 @Controller('provider')
 @ApiTags('providers')
 export class ProvidersController {
-  constructor(private readonly providersService: ProvidersService) {}
+  constructor(
+    private readonly providersService: ProvidersService,
+    private readonly providersImagesService: ProvidersImagesService,
+  ) {}
 
   /**
    * Request a new service
@@ -146,6 +156,115 @@ export class ProvidersController {
     @Body() dto: SetAvailabilityDto,
   ) {
     return this.providersService.setAvailability(userId, dto);
+  }
+
+  // ==================== IMAGE MANAGEMENT ====================
+
+  /**
+   * Get provider images
+   */
+  @Get('images')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get provider images (logo, banner, gallery)' })
+  @ApiResponse({ status: 200, description: 'Images retrieved successfully' })
+  async getImages(@CurrentUser('id') userId: number) {
+    return this.providersImagesService.getProviderImages(userId);
+  }
+
+  /**
+   * Upload logo image
+   */
+  @Post('images/logo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload provider logo image' })
+  @ApiResponse({ status: 201, description: 'Logo uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid file or validation error' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadLogo(
+    @CurrentUser('id') userId: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.providersImagesService.uploadLogo(userId, file);
+  }
+
+  /**
+   * Upload banner image (main homepage image)
+   */
+  @Post('images/banner')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload provider banner image' })
+  @ApiResponse({ status: 201, description: 'Banner uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid file or validation error' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadBanner(
+    @CurrentUser('id') userId: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.providersImagesService.uploadBanner(userId, file);
+  }
+
+  /**
+   * Upload gallery image
+   */
+  @Post('images/gallery')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload gallery image' })
+  @ApiResponse({ status: 201, description: 'Gallery image uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid file or validation error' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadGalleryImage(
+    @CurrentUser('id') userId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('caption') caption?: string,
+  ) {
+    return this.providersImagesService.uploadGalleryImage(userId, file, caption);
+  }
+
+  /**
+   * Delete gallery image
+   */
+  @Delete('images/gallery/:imageId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete gallery image' })
+  @ApiResponse({ status: 200, description: 'Gallery image deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Image not found' })
+  async deleteGalleryImage(
+    @CurrentUser('id') userId: number,
+    @Param('imageId') imageId: string,
+  ) {
+    return this.providersImagesService.deleteGalleryImage(userId, imageId);
+  }
+
+  /**
+   * Reorder gallery images
+   */
+  @Put('images/gallery/reorder')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reorder gallery images' })
+  @ApiResponse({ status: 200, description: 'Gallery images reordered successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid image IDs' })
+  async reorderGalleryImages(
+    @CurrentUser('id') userId: number,
+    @Body('imageIds') imageIds: string[],
+  ) {
+    return this.providersImagesService.reorderGalleryImages(userId, imageIds);
   }
 
   // ==================== JOB MANAGEMENT ====================

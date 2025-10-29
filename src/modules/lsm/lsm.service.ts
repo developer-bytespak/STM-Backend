@@ -699,10 +699,6 @@ export class LsmService {
       orderBy: { created_at: 'asc' }, // Oldest first
     });
 
-    console.log(`[LSM] Fetched ${providers.length} pending providers from DB`);
-    providers.forEach(provider => {
-      console.log(`[LSM] Provider ${provider.id} (${provider.business_name}) has ${provider.documents.length} documents`);
-    });
 
     return providers.map((provider) => {
       const totalDocs = provider.documents.length;

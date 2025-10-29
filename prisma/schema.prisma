@@ -78,11 +78,14 @@ model service_providers {
   min_price             Decimal?                 @db.Decimal(10, 2)
   terms_accepted_at     DateTime?
   website_url           String?
+  logo_url              String?
+  banner_url            String?
+  gallery_images        Json                      @default("[]")
   chats                 chat[]
   jobs                  jobs[]
   documents             provider_documents[]
   service_areas         provider_service_areas[]
-  provider_services     provider_services[]
+  provider_services    provider_services[]
   feedbacks             ratings_feedback[]
   local_service_manager local_service_managers   @relation(fields: [lsm_id], references: [id])
   user                  users                    @relation(fields: [user_id], references: [id])
