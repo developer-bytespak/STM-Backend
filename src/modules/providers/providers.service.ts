@@ -422,6 +422,17 @@ export class ProvidersService {
         earnings: Number(provider.earning),
         rating: Number(provider.rating),
       },
+      images: {
+        logoUrl: provider.logo_url,
+        bannerUrl: provider.banner_url,
+        galleryImages:
+          (provider.gallery_images as Array<{
+            id: string;
+            url: string;
+            caption?: string;
+            order: number;
+          }>) || [],
+      },
     };
   }
 

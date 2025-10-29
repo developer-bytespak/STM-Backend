@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SearchProvidersDto } from './dto/search-providers.dto';
 import { generateProviderSlug } from '../../shared/utils/slug.utils';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class HomepageService {
@@ -271,6 +272,7 @@ export class HomepageService {
       },
     };
 
+
     // Apply optional filters
     if (filters?.minRating) {
       where.provider.rating = { gte: filters.minRating };
@@ -315,27 +317,82 @@ export class HomepageService {
       },
     });
 
+
+    // TEMPORARY FIX: If no providers found with images, include providers with images regardless of service
+    if (providerServices.length === 0 || !providerServices.some(ps => ps.provider.logo_url || ps.provider.banner_url)) {
+      
+      const providersWithImagesOnly = await this.prisma.provider_services.findMany({
+        where: {
+          is_active: true,
+          provider: {
+            status: 'active',
+            OR: [
+              { logo_url: { not: null } },
+              { banner_url: { not: null } },
+              { gallery_images: { not: Prisma.JsonNull } }
+            ]
+          }
+        },
+        include: {
+          provider: {
+            include: {
+              user: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                  phone_number: true,
+                },
+              },
+              service_areas: true,
+              provider_services: {
+                where: { is_active: true },
+                include: {
+                  service: {
+                    select: {
+                      id: true,
+                      name: true,
+                      category: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        take: 5 // Limit to 5 providers for testing
+      });
+
+      
+      // Add these providers to the results
+      providerServices.push(...providersWithImagesOnly);
+    }
+
     // 4. Format response
-    const providers = providerServices.map((ps) => ({
-      id: ps.provider.id,
-      businessName: ps.provider.business_name,
-      slug: generateProviderSlug(ps.provider.business_name, ps.provider.id),
-      ownerName: `${ps.provider.user.first_name} ${ps.provider.user.last_name}`,
-      rating: Number(ps.provider.rating),
-      totalJobs: ps.provider.total_jobs,
-      experience: ps.provider.experience,
-      description: ps.provider.description,
-      location: ps.provider.location,
-      minPrice: ps.provider.min_price ? Number(ps.provider.min_price) : null,
-      maxPrice: ps.provider.max_price ? Number(ps.provider.max_price) : null,
-      phoneNumber: ps.provider.user.phone_number,
-      serviceAreas: ps.provider.service_areas.map((area) => area.zipcode),
-      services: ps.provider.provider_services.map((s) => ({
-        id: s.service.id,
-        name: s.service.name,
-        category: s.service.category,
-      })),
-    }));
+    const providers = providerServices.map((ps) => {
+      
+      return {
+        id: ps.provider.id,
+        businessName: ps.provider.business_name,
+        slug: generateProviderSlug(ps.provider.business_name, ps.provider.id),
+        ownerName: `${ps.provider.user.first_name} ${ps.provider.user.last_name}`,
+        rating: Number(ps.provider.rating),
+        totalJobs: ps.provider.total_jobs,
+        experience: ps.provider.experience,
+        description: ps.provider.description,
+        location: ps.provider.location,
+        minPrice: ps.provider.min_price ? Number(ps.provider.min_price) : null,
+        maxPrice: ps.provider.max_price ? Number(ps.provider.max_price) : null,
+        phoneNumber: ps.provider.user.phone_number,
+        serviceAreas: ps.provider.service_areas.map((area) => area.zipcode),
+        services: ps.provider.provider_services.map((s) => ({
+          id: s.service.id,
+          name: s.service.name,
+          category: s.service.category,
+        })),
+        logoUrl: ps.provider.logo_url,
+        bannerUrl: ps.provider.banner_url,
+      };
+    });
 
     return {
       success: true,
@@ -509,6 +566,15 @@ export class HomepageService {
         websiteUrl: provider.website_url,
         certifications: certifications.length > 0 ? certifications : undefined,
         isAvailable: provider.is_active && activeServices.length > 0,
+        logoUrl: provider.logo_url,
+        bannerUrl: provider.banner_url,
+        galleryImages:
+          (provider.gallery_images as Array<{
+            id: string;
+            url: string;
+            caption?: string;
+            order: number;
+          }>) || [],
         // Note: workingHours and reviews would need separate tables in your schema
         // For now, these are optional and can be added later
       },
