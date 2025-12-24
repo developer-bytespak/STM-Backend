@@ -25,6 +25,7 @@ import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.m
 import { AdminModule } from './modules/admin/admin.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
 import { UtilsModule } from './modules/utils/utils.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { UtilsModule } from './modules/utils/utils.module';
     OfficeSpacesModule,
     AdminModule,
     HomepageModule,
+    AiModule,
     UtilsModule,
   ],
   controllers: [AppController],
