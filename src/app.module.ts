@@ -25,6 +25,7 @@ import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.m
 import { AdminModule } from './modules/admin/admin.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
 import { UtilsModule } from './modules/utils/utils.module';
+import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { UtilsModule } from './modules/utils/utils.module';
     AdminModule,
     HomepageModule,
     UtilsModule,
+    VoiceModule,
   ],
   controllers: [AppController],
   providers: [AppService, Logger, JobTimeoutService],
