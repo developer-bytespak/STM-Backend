@@ -27,6 +27,7 @@ import { HomepageModule } from './modules/homepage/homepage.module';
 import { UtilsModule } from './modules/utils/utils.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
+import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
     AiModule,
     AiChatModule,
     UtilsModule,
+    VoiceModule,
   ],
   controllers: [AppController],
   providers: [AppService, Logger, JobTimeoutService],
