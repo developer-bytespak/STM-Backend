@@ -47,6 +47,7 @@ model customers {
   jobs             jobs[]
   feedbacks        ratings_feedback[]
   service_requests service_requests[]
+  ai_chat_sessions ai_chat_sessions[]
 }
 
 model service_providers {
@@ -80,12 +81,12 @@ model service_providers {
   website_url           String?
   logo_url              String?
   banner_url            String?
-  gallery_images        Json                      @default("[]")
+  gallery_images        Json                     @default("[]")
   chats                 chat[]
   jobs                  jobs[]
   documents             provider_documents[]
   service_areas         provider_service_areas[]
-  provider_services    provider_services[]
+  provider_services     provider_services[]
   feedbacks             ratings_feedback[]
   local_service_manager local_service_managers   @relation(fields: [lsm_id], references: [id])
   user                  users                    @relation(fields: [user_id], references: [id])
@@ -178,6 +179,8 @@ model chat {
   lsm_invited           Boolean                 @default(false) // Dispute filed, LSM invited to join
   lsm_joined            Boolean                 @default(false) // LSM accepted and joined chat
   lsm_joined_at         DateTime? // When LSM joined
+  from_ai_flow          Boolean                 @default(false) // Chat created from AI sales assistant flow
+  ai_session_id         String?                 @db.Uuid // Link to ai_chat_sessions if applicable
   customer              customers               @relation(fields: [customer_id], references: [id])
   job                   jobs?                   @relation(fields: [job_id], references: [id])
   local_service_manager local_service_managers? @relation(fields: [lsm_id], references: [id])
@@ -433,6 +436,40 @@ enum PaymentStatus {
   pending
   received
   disputed
+}
+
+enum AiChatSenderType {
+  user
+  assistant
+}
+
+model ai_chat_sessions {
+  id          String             @id @default(uuid()) @db.Uuid
+  user_id     Int
+  session_id  String             @unique @db.Uuid
+  summary     String? // Stores AI-generated summary for provider handoff
+  created_at  DateTime           @default(now())
+  updated_at  DateTime           @updatedAt
+  last_active DateTime           @default(now())
+  is_active   Boolean            @default(true)
+  customer    customers          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  messages    ai_chat_messages[]
+
+  @@index([user_id])
+  @@index([is_active])
+  @@index([session_id])
+}
+
+model ai_chat_messages {
+  id          String           @id @default(uuid()) @db.Uuid
+  session_id  String           @db.Uuid
+  sender_type AiChatSenderType
+  message     String
+  created_at  DateTime         @default(now())
+  session     ai_chat_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
+
+  @@index([session_id])
+  @@index([created_at])
 }
 
 model platform_settings {

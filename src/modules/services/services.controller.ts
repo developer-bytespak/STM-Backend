@@ -8,6 +8,16 @@ export class ServicesController {
   constructor(private readonly searchService: SearchMatchingService) {}
 
   /**
+   * Get all approved services (public endpoint)
+   */
+  @Get()
+  @ApiOperation({ summary: 'Get all approved services' })
+  @ApiResponse({ status: 200, description: 'Services retrieved successfully' })
+  async getAllServices() {
+    return this.searchService.getAllApprovedServices();
+  }
+
+  /**
    * Search services (public endpoint)
    */
   @Get('search')

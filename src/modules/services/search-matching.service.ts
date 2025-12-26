@@ -6,6 +6,29 @@ export class SearchMatchingService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Get all approved services
+   */
+  async getAllApprovedServices() {
+    const services = await this.prisma.services.findMany({
+      where: {
+        status: 'approved',
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+      },
+      orderBy: [{ is_popular: 'desc' }, { name: 'asc' }],
+    });
+
+    return {
+      services,
+      total: services.length,
+    };
+  }
+
+  /**
    * Search services with filters
    */
   async searchServices(filters: {

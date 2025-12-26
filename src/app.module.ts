@@ -25,6 +25,8 @@ import { OfficeSpacesModule } from './modules/office-spaces/office-real-estate.m
 import { AdminModule } from './modules/admin/admin.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
 import { UtilsModule } from './modules/utils/utils.module';
+import { AiModule } from './modules/ai/ai.module';
+import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
@@ -57,6 +59,8 @@ import { VoiceModule } from './modules/voice/voice.module';
     OfficeSpacesModule,
     AdminModule,
     HomepageModule,
+    AiModule,
+    AiChatModule,
     UtilsModule,
     VoiceModule,
   ],
