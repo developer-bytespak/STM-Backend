@@ -92,6 +92,7 @@ model service_providers {
   user                  users                    @relation(fields: [user_id], references: [id])
   service_requests      service_requests[]
   ban_requests          ban_requests[]
+  meetings              meetings[]
 }
 
 model local_service_managers {
@@ -107,6 +108,7 @@ model local_service_managers {
   chats              chat[]
   user               users               @relation(fields: [user_id], references: [id])
   service_providers  service_providers[]
+  meetings           meetings[]
 }
 
 model admin {
@@ -359,6 +361,137 @@ model ban_requests {
   @@index([status])
 }
 
+model platform_settings {
+  id                           Int      @id @default(autoincrement())
+  response_deadline_mins       Int      @default(60)
+  warning_threshold            Int      @default(3)
+  popularity_threshold         Int      @default(10)
+  cancellation_fee_percentage  Decimal  @default(25) @db.Decimal(5, 2)
+  default_in_person_visit_cost Decimal  @default(50.00) @db.Decimal(10, 2)
+  updated_by                   Int
+  updated_at                   DateTime @updatedAt
+  created_at                   DateTime @default(now())
+
+  @@index([created_at])
+}
+
+model office_spaces {
+  id             String            @id @default(uuid()) @db.Uuid
+  name           String            @db.VarChar(255)
+  description    String
+  type           String            @default("private_office") @db.VarChar(50)
+  status         OfficeStatus      @default(available)
+  address        String
+  city           String            @db.VarChar(100)
+  state          String            @db.VarChar(50)
+  zip_code       String            @db.VarChar(10)
+  capacity       Int
+  area_sqft      Int
+  daily_price    Decimal           @db.Decimal(10, 2)
+  availability   Json              @default("{}")
+  rating         Decimal           @default(0.00) @db.Decimal(3, 2)
+  reviews_count  Int               @default(0)
+  total_bookings Int               @default(0)
+  images         Json              @default("[]")
+  created_at     DateTime          @default(now())
+  updated_at     DateTime          @updatedAt
+  created_by     Int?
+  bookings       office_bookings[]
+  creator        users?            @relation("OfficeSpacesCreated", fields: [created_by], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([city])
+}
+
+model office_bookings {
+  id               String        @id @default(uuid()) @db.Uuid
+  office_space_id  String        @db.Uuid
+  provider_id      Int
+  office_name      String        @db.VarChar(255)
+  provider_name    String        @db.VarChar(255)
+  provider_email   String        @db.VarChar(255)
+  start_date       DateTime
+  end_date         DateTime
+  duration         Int
+  duration_type    String        @default("daily") @db.VarChar(50)
+  daily_rate       Decimal       @db.Decimal(10, 2)
+  total_amount     Decimal       @db.Decimal(10, 2)
+  status           BookingStatus @default(pending)
+  payment_status   String        @default("pending") @db.VarChar(50)
+  payment_method   String?       @db.VarChar(100)
+  transaction_id   String?       @db.VarChar(255)
+  special_requests String?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+  office_space     office_spaces @relation(fields: [office_space_id], references: [id], onDelete: Cascade)
+  provider         users         @relation("ProviderBookings", fields: [provider_id], references: [id], onDelete: Cascade)
+
+  @@index([office_space_id])
+  @@index([provider_id])
+  @@index([status])
+}
+
+model ai_chat_sessions {
+  id          String             @id @default(uuid()) @db.Uuid
+  user_id     Int
+  session_id  String             @unique @db.Uuid
+  summary     String? // Stores AI-generated summary for provider handoff
+  created_at  DateTime           @default(now())
+  updated_at  DateTime           @updatedAt
+  last_active DateTime           @default(now())
+  is_active   Boolean            @default(true)
+  customer    customers          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  messages    ai_chat_messages[]
+
+  @@index([user_id])
+  @@index([is_active])
+  @@index([session_id])
+}
+
+model ai_chat_messages {
+  id          String           @id @default(uuid()) @db.Uuid
+  session_id  String           @db.Uuid
+  sender_type AiChatSenderType
+  message     String
+  created_at  DateTime         @default(now())
+  session     ai_chat_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
+
+  @@index([session_id])
+  @@index([created_at])
+}
+
+model meetings {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  provider_id            Int
+  lsm_id                 Int
+  provider_email         String?                
+  provider_business_name String?               
+  google_event_id        String                 @unique 
+  meet_link              String
+  conference_id          String?
+  scheduled_start        DateTime
+  scheduled_end          DateTime
+  timezone               String                 @default("UTC")
+  email_sent             Boolean                @default(false)
+  email_sent_at          DateTime?
+  email_status           String?                @default("pending")
+  meeting_status         MeetingStatus          @default(pending)
+  title                  String?
+  meeting_description    String?                
+  is_rescheduled         Boolean                @default(false)
+  rescheduled_at         DateTime?
+  created_at             DateTime               @default(now())
+  updated_at             DateTime               @updatedAt
+  provider               service_providers      @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  lsm                    local_service_managers @relation(fields: [lsm_id], references: [id], onDelete: Cascade)
+
+  @@index([provider_id])
+  @@index([lsm_id])
+  @@index([google_event_id])
+  @@index([meeting_status])
+  @@index([scheduled_start])
+}
+
 enum Role {
   customer
   service_provider
@@ -443,105 +576,6 @@ enum AiChatSenderType {
   assistant
 }
 
-model ai_chat_sessions {
-  id          String             @id @default(uuid()) @db.Uuid
-  user_id     Int
-  session_id  String             @unique @db.Uuid
-  summary     String? // Stores AI-generated summary for provider handoff
-  created_at  DateTime           @default(now())
-  updated_at  DateTime           @updatedAt
-  last_active DateTime           @default(now())
-  is_active   Boolean            @default(true)
-  customer    customers          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  messages    ai_chat_messages[]
-
-  @@index([user_id])
-  @@index([is_active])
-  @@index([session_id])
-}
-
-model ai_chat_messages {
-  id          String           @id @default(uuid()) @db.Uuid
-  session_id  String           @db.Uuid
-  sender_type AiChatSenderType
-  message     String
-  created_at  DateTime         @default(now())
-  session     ai_chat_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
-
-  @@index([session_id])
-  @@index([created_at])
-}
-
-model platform_settings {
-  id                           Int      @id @default(autoincrement())
-  response_deadline_mins       Int      @default(60)
-  warning_threshold            Int      @default(3)
-  popularity_threshold         Int      @default(10)
-  cancellation_fee_percentage  Decimal  @default(25) @db.Decimal(5, 2)
-  default_in_person_visit_cost Decimal  @default(50.00) @db.Decimal(10, 2)
-  updated_by                   Int
-  updated_at                   DateTime @updatedAt
-  created_at                   DateTime @default(now())
-
-  @@index([created_at])
-}
-
-model office_spaces {
-  id             String            @id @default(uuid()) @db.Uuid
-  name           String            @db.VarChar(255)
-  description    String
-  type           String            @default("private_office") @db.VarChar(50)
-  status         OfficeStatus      @default(available)
-  address        String
-  city           String            @db.VarChar(100)
-  state          String            @db.VarChar(50)
-  zip_code       String            @db.VarChar(10)
-  capacity       Int
-  area_sqft      Int
-  daily_price    Decimal           @db.Decimal(10, 2)
-  availability   Json              @default("{}")
-  rating         Decimal           @default(0.00) @db.Decimal(3, 2)
-  reviews_count  Int               @default(0)
-  total_bookings Int               @default(0)
-  images         Json              @default("[]")
-  created_at     DateTime          @default(now())
-  updated_at     DateTime          @updatedAt
-  created_by     Int?
-  bookings       office_bookings[]
-  creator        users?            @relation("OfficeSpacesCreated", fields: [created_by], references: [id], onDelete: SetNull)
-
-  @@index([status])
-  @@index([city])
-}
-
-model office_bookings {
-  id               String        @id @default(uuid()) @db.Uuid
-  office_space_id  String        @db.Uuid
-  provider_id      Int
-  office_name      String        @db.VarChar(255)
-  provider_name    String        @db.VarChar(255)
-  provider_email   String        @db.VarChar(255)
-  start_date       DateTime
-  end_date         DateTime
-  duration         Int
-  duration_type    String        @default("daily") @db.VarChar(50)
-  daily_rate       Decimal       @db.Decimal(10, 2)
-  total_amount     Decimal       @db.Decimal(10, 2)
-  status           BookingStatus @default(pending)
-  payment_status   String        @default("pending") @db.VarChar(50)
-  payment_method   String?       @db.VarChar(100)
-  transaction_id   String?       @db.VarChar(255)
-  special_requests String?
-  created_at       DateTime      @default(now())
-  updated_at       DateTime      @updatedAt
-  office_space     office_spaces @relation(fields: [office_space_id], references: [id], onDelete: Cascade)
-  provider         users         @relation("ProviderBookings", fields: [provider_id], references: [id], onDelete: Cascade)
-
-  @@index([office_space_id])
-  @@index([provider_id])
-  @@index([status])
-}
-
 enum OfficeStatus {
   available
   occupied
@@ -554,4 +588,14 @@ enum BookingStatus {
   confirmed
   cancelled
   completed
+}
+
+enum MeetingStatus {
+  pending
+  scheduled
+  confirmed
+  completed
+  cancelled
+  rescheduled
+  no_show
 }
