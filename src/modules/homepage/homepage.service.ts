@@ -317,58 +317,18 @@ export class HomepageService {
       },
     });
 
+    // 4. De-duplicate providers by provider_id (in case same provider offers service multiple times)
+    const uniqueProviderIds = new Set<number>();
+    const deduplicatedServices = providerServices.filter((ps) => {
+      if (uniqueProviderIds.has(ps.provider_id)) {
+        return false; // Skip duplicates
+      }
+      uniqueProviderIds.add(ps.provider_id);
+      return true;
+    });
 
-    // TEMPORARY FIX: If no providers found with images, include providers with images regardless of service
-    if (providerServices.length === 0 || !providerServices.some(ps => ps.provider.logo_url || ps.provider.banner_url)) {
-      
-      const providersWithImagesOnly = await this.prisma.provider_services.findMany({
-        where: {
-          is_active: true,
-          provider: {
-            status: 'active',
-            OR: [
-              { logo_url: { not: null } },
-              { banner_url: { not: null } },
-              { gallery_images: { not: Prisma.JsonNull } }
-            ]
-          }
-        },
-        include: {
-          provider: {
-            include: {
-              user: {
-                select: {
-                  first_name: true,
-                  last_name: true,
-                  phone_number: true,
-                },
-              },
-              service_areas: true,
-              provider_services: {
-                where: { is_active: true },
-                include: {
-                  service: {
-                    select: {
-                      id: true,
-                      name: true,
-                      category: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        take: 5 // Limit to 5 providers for testing
-      });
-
-      
-      // Add these providers to the results
-      providerServices.push(...providersWithImagesOnly);
-    }
-
-    // 4. Format response
-    const providers = providerServices.map((ps) => {
+    // 5. Format response
+    const providers = deduplicatedServices.map((ps) => {
       
       return {
         id: ps.provider.id,

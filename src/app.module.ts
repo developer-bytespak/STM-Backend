@@ -26,6 +26,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
 import { UtilsModule } from './modules/utils/utils.module';
 import { AiModule } from './modules/ai/ai.module';
+import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AiModule } from './modules/ai/ai.module';
     AdminModule,
     HomepageModule,
     AiModule,
+    AiChatModule,
     UtilsModule,
   ],
   controllers: [AppController],

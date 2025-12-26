@@ -377,6 +377,96 @@ export class ChatService {
     return { urls };
   }
 
+  /**
+   * Create a chat from AI flow with summary injection
+   */
+  async createChatFromAI(
+    userId: number,
+    providerId: number,
+    aiSessionId: string,
+    summary: string,
+  ) {
+    // Verify customer exists
+    const customer = await this.prisma.customers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer profile not found');
+    }
+
+    // Verify provider exists
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+          },
+        },
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider not found');
+    }
+
+    if (provider.status !== 'active') {
+      throw new BadRequestException('Service provider is not active');
+    }
+
+    // Check if chat already exists for this customer-provider pair from AI flow
+    const existingChat = await this.prisma.chat.findFirst({
+      where: {
+        customer_id: customer.id,
+        provider_id: providerId,
+        from_ai_flow: true,
+        ai_session_id: aiSessionId,
+        is_active: true,
+        is_deleted: false,
+      },
+    });
+
+    if (existingChat) {
+      // Return existing chat
+      return {
+        chatId: existingChat.id,
+        message: 'Chat already exists',
+      };
+    }
+
+    // Create chat with AI flow flag
+    return await this.prisma.$transaction(async (tx) => {
+      const chat = await tx.chat.create({
+        data: {
+          customer_id: customer.id,
+          provider_id: providerId,
+          from_ai_flow: true,
+          ai_session_id: aiSessionId,
+          is_active: true,
+        },
+      });
+
+      // Create system message with AI summary
+      // Using sender_type='customer' but with a special message format to indicate it's from AI
+      await tx.messages.create({
+        data: {
+          chat_id: chat.id,
+          sender_type: 'customer', // System messages use customer type but with special content
+          sender_id: userId,
+          message_type: 'text',
+          message: `[AI Summary] ${summary}`,
+        },
+      });
+
+      return {
+        chatId: chat.id,
+        message: 'Chat created successfully with AI summary',
+      };
+    });
+  }
+
   // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
   // Use the 'send_message' Socket.IO event for real-time messaging
 }
