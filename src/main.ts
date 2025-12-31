@@ -9,6 +9,9 @@ async function bootstrap() {
     logger: ['error', 'warn'] // reduce Nest logs
   });
 
+  // Capture raw body for Stripe webhook verification
+  app.use('/webhooks/stripe', require('express').raw({ type: 'application/json' }));
+
   // Configure body parser for larger payloads (Base64 images)
   app.use(require('express').json({ limit: '50mb' }));
   app.use(require('express').urlencoded({ limit: '50mb', extended: true }));
