@@ -325,8 +325,45 @@ export class AiChatService {
       content: msg.message,
     }));
 
+    // Add current message to history for extraction (before saving to DB)
+    const conversationWithCurrent = [
+      ...conversationHistory,
+      { role: 'user' as const, content: dto.message }
+    ];
+
+    // Extract current data from conversation to provide context to AI
+    const services = await this.prisma.services.findMany({
+      where: { status: 'approved' },
+      select: { id: true, name: true, description: true, category: true },
+    });
+
+    const extractedData = await this.aiService.extractConversationData(
+      conversationWithCurrent, // Use conversation WITH current message
+      services,
+    );
+
+    this.logger.log(`[Send Message] Extracted data before AI response: ${JSON.stringify(extractedData)}`);
+
     // Get real-time database context for AI
-    const dbContext = await this.getDatabaseContext();
+    let dbContext = await this.getDatabaseContext();
+
+    // Add extracted data context so AI knows what's already collected
+    const dataStatusContext = `
+
+CURRENT DATA COLLECTED FROM USER:
+- Service: ${extractedData.service || 'NOT PROVIDED YET'}
+- Zipcode: ${extractedData.zipcode || 'NOT PROVIDED YET'}
+- Budget: ${extractedData.budget || 'NOT PROVIDED YET'}
+- Requirements: ${extractedData.requirements || 'NOT PROVIDED YET'}
+
+IMPORTANT: 
+- DO NOT ask for information that is already collected (marked as provided above with actual values)
+- If a field shows "NOT PROVIDED YET", you should ask for it
+- If a field already has a value, DO NOT ask for it again - acknowledge it and move to the next missing field or provide recommendations
+- Use the SPECIFIC service name when asking questions (e.g., "What's your budget for House Cleaning?" not "What's your budget for this service?")
+- If ALL fields are collected, proceed to recommend providers or ask if they want to see recommendations`;
+
+    dbContext += dataStatusContext;
 
     // Save user message
     await this.prisma.ai_chat_messages.create({
@@ -384,7 +421,16 @@ export class AiChatService {
   /**
    * Generate summary from conversation
    */
-  async generateSummary(sessionId: string, userId: number) {
+  async generateSummary(
+    sessionId: string,
+    userId: number,
+    collectedData?: {
+      service: string | null;
+      zipcode: string | null;
+      budget: string | null;
+      requirements: string | null;
+    }
+  ) {
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -413,17 +459,23 @@ export class AiChatService {
       return { summary: session.summary };
     }
 
-    // Build conversation history
-    const conversationHistory = session.messages.map((msg) => ({
-      role: msg.sender_type === 'user' ? ('user' as const) : ('assistant' as const),
-      content: msg.message,
-    }));
+    this.logger.log(`[Generate Summary] Using collected data: ${JSON.stringify(collectedData)}`);
 
-    // Get database context for accurate summary
-    const dbContext = await this.getDatabaseContext();
+    // Use provided collected data if available, otherwise extract from conversation
+    let summary: string;
+    if (collectedData && (collectedData.service || collectedData.zipcode || collectedData.budget || collectedData.requirements)) {
+      // Build summary directly from collected data
+      summary = `Service: ${collectedData.service || 'Not provided'}\nLocation: ${collectedData.zipcode || 'Not provided'}\nBudget: ${collectedData.budget || 'Not provided'}\nRequirements: ${collectedData.requirements || 'Not provided'}`;
+      this.logger.log(`[Generate Summary] Built from collected data: ${summary}`);
+    } else {
+      // Fallback to extracting from conversation
+      const conversationHistory = session.messages.map((msg) => ({
+        role: msg.sender_type === 'user' ? ('user' as const) : ('assistant' as const),
+        content: msg.message,
+      }));
 
-    // Ask AI to generate summary with proper formatting
-    const summaryPrompt = `Based on our conversation, please generate a structured summary with the following information on separate lines:
+      const dbContext = await this.getDatabaseContext();
+      const summaryPrompt = `Based on our conversation, please generate a structured summary with the following information on separate lines:
 
 Service: [extracted service type]
 Location: [extracted zipcode or location]
@@ -431,17 +483,17 @@ Budget: [extracted budget if mentioned]
 Requirements: [extracted requirements or special requests]
 
 Be concise and extract only information that was explicitly mentioned in the conversation.`;
-    
-    let summary: string;
-    try {
-      summary = await this.aiService.askSalesAssistant(
-        summaryPrompt,
-        conversationHistory,
-        dbContext,
-      );
-    } catch (error) {
-      this.logger.error('Summary generation failed', error);
-      throw new BadRequestException('Failed to generate summary');
+      
+      try {
+        summary = await this.aiService.askSalesAssistant(
+          summaryPrompt,
+          conversationHistory,
+          dbContext,
+        );
+      } catch (error) {
+        this.logger.error('Summary generation failed', error);
+        throw new BadRequestException('Failed to generate summary');
+      }
     }
 
     // Save summary
@@ -618,6 +670,154 @@ Be concise and extract only information that was explicitly mentioned in the con
     }
 
     return session;
+  }
+
+  /**
+   * Extract structured data from conversation using AI
+   */
+  async extractDataFromConversation(sessionId: string, userId: number) {
+    this.logger.log(`\n${'='.repeat(80)}`);
+    this.logger.log(`📞 [EXTRACT ENDPOINT CALLED]`);
+    this.logger.log(`   Session ID: ${sessionId}`);
+    this.logger.log(`   User ID: ${userId}`);
+    this.logger.log(`${'='.repeat(80)}\n`);
+
+    const customer = await this.prisma.customers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer profile not found');
+    }
+
+    const session = await this.prisma.ai_chat_sessions.findFirst({
+      where: {
+        session_id: sessionId,
+        user_id: customer.id,
+      },
+      include: {
+        messages: {
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('AI chat session not found');
+    }
+
+    this.logger.log(`📨 [SESSION FOUND] ${session.messages.length} messages in conversation`);
+
+    // Build conversation history
+    const conversationHistory = session.messages.map((msg) => ({
+      role: msg.sender_type === 'user' ? ('user' as const) : ('assistant' as const),
+      content: msg.message,
+    }));
+
+    // Get all available services from database
+    const services = await this.prisma.services.findMany({
+      where: { status: 'approved' },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+      },
+    });
+
+    this.logger.log(`🛠️ [SERVICES LOADED] ${services.length} approved services available`);
+
+    // Call AI to extract data
+    const extractedData = await this.aiService.extractConversationData(
+      conversationHistory,
+      services,
+    );
+
+    this.logger.log(`\n✅ [EXTRACTION ENDPOINT COMPLETE]`);
+    this.logger.log(`   Returning: ${JSON.stringify(extractedData)}`);
+    this.logger.log(`${'='.repeat(80)}\n`);
+
+    return extractedData;
+  }
+
+  /**
+   * Get actual price range for a service from provider data
+   */
+  async getServicePriceRange(serviceName: string): Promise<{
+    serviceName: string;
+    minPrice: number;
+    maxPrice: number;
+    avgPrice: number;
+    providerCount: number;
+  }> {
+    this.logger.log(`💰 [PRICE RANGE] Getting prices for service: ${serviceName}`);
+
+    // Find the service
+    const service = await this.prisma.services.findFirst({
+      where: {
+        name: {
+          contains: serviceName,
+          mode: 'insensitive',
+        },
+        status: 'approved',
+      },
+      include: {
+        provider_services: {
+          where: { is_active: true },
+          include: {
+            provider: true,
+          },
+        },
+      },
+    });
+
+    if (!service) {
+      this.logger.warn(`⚠️ [PRICE RANGE] Service "${serviceName}" not found`);
+      // Return default range
+      return {
+        serviceName,
+        minPrice: 50,
+        maxPrice: 500,
+        avgPrice: 250,
+        providerCount: 0,
+      };
+    }
+
+    // Extract prices from active providers only
+    const prices = service.provider_services
+      .filter(ps => ps.provider.is_active && ps.provider.status === 'active')
+      .map(ps => ({
+        min: ps.provider.min_price ? Number(ps.provider.min_price) : null,
+        max: ps.provider.max_price ? Number(ps.provider.max_price) : null,
+      }))
+      .filter(p => p.min !== null && p.max !== null && p.min > 0);
+
+    if (prices.length === 0) {
+      this.logger.warn(`⚠️ [PRICE RANGE] No providers with prices for "${serviceName}"`);
+      return {
+        serviceName: service.name,
+        minPrice: 50,
+        maxPrice: 500,
+        avgPrice: 250,
+        providerCount: 0,
+      };
+    }
+
+    const minPrice = Math.min(...prices.map(p => p.min!));
+    const maxPrice = Math.max(...prices.map(p => p.max!));
+    const avgPrice = Math.round(
+      prices.reduce((sum, p) => sum + ((p.min! + p.max!) / 2), 0) / prices.length
+    );
+
+    this.logger.log(`✅ [PRICE RANGE] ${service.name}: $${minPrice}-$${maxPrice} (avg: $${avgPrice}, ${prices.length} providers)`);
+
+    return {
+      serviceName: service.name,
+      minPrice,
+      maxPrice,
+      avgPrice,
+      providerCount: prices.length,
+    };
   }
 }
 

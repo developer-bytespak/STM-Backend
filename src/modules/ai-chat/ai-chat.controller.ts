@@ -5,6 +5,7 @@ import {
   Body,
   Param,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -19,10 +20,12 @@ import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
 import { CurrentUser } from '../oauth/decorators/current-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+import { RateLimitInterceptor } from '../../common/interceptors/rate-limit.interceptor';
 
 @ApiTags('AI Chat')
 @Controller('customer/ai-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(RateLimitInterceptor)
 @Roles(UserRole.CUSTOMER)
 @ApiBearerAuth()
 export class AiChatController {
@@ -89,8 +92,27 @@ export class AiChatController {
   async generateSummary(
     @Param('sessionId') sessionId: string,
     @CurrentUser('id') userId: number,
+    @Body() body?: { service?: string; zipcode?: string; budget?: string; requirements?: string },
   ) {
-    return this.aiChatService.generateSummary(sessionId, userId);
+    const collectedData = body ? {
+      service: body.service || null,
+      zipcode: body.zipcode || null,
+      budget: body.budget || null,
+      requirements: body.requirements || null,
+    } : undefined;
+    return this.aiChatService.generateSummary(sessionId, userId, collectedData);
+  }
+
+  @Post('sessions/:sessionId/extract')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Extract structured data from conversation using AI' })
+  @ApiResponse({ status: 200, description: 'Data extracted successfully' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  async extractData(
+    @Param('sessionId') sessionId: string,
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.aiChatService.extractDataFromConversation(sessionId, userId);
   }
 
   @Post('sessions/:sessionId/end')
@@ -111,6 +133,14 @@ export class AiChatController {
   @ApiResponse({ status: 200, description: 'Providers recommended successfully' })
   async getRecommendedProviders(@Body() dto: RecommendProvidersDto) {
     return this.aiChatService.getRecommendedProviders(dto);
+  }
+
+  @Get('services/:serviceName/price-range')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get actual price range for a service from provider data' })
+  @ApiResponse({ status: 200, description: 'Price range retrieved successfully' })
+  async getServicePriceRange(@Param('serviceName') serviceName: string) {
+    return this.aiChatService.getServicePriceRange(serviceName);
   }
 
   @Post('chats/create')
