@@ -5,9 +5,10 @@ import { StripeService } from './services/stripe.service';
 import { InvoicingService } from './services/invoicing.service';
 import { WebhookController } from './webhook.controller';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
-  imports: [],
+  imports: [ChatModule],
   controllers: [PaymentController, WebhookController],
   providers: [
     PaymentService,

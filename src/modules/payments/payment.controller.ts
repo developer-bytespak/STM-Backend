@@ -84,14 +84,14 @@ export class PaymentController {
   /**
    * Calculate provider earnings
    */
-  @Get('provider/:providerId/earnings')
+  @Get('earnings')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PROVIDER, UserRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Calculate provider earnings' })
   @ApiResponse({ status: 200, description: 'Earnings calculated' })
-  async getEarnings(@Param('providerId', ParseIntPipe) providerId: number) {
-    return await this.paymentService.calculateEarnings(providerId);
+  async getEarnings(@CurrentUser('id') userId: number) {
+    return await this.paymentService.calculateEarnings(userId);
   }
 
   /**
