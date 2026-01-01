@@ -456,7 +456,7 @@ export class ChatService {
           sender_type: 'customer', // System messages use customer type but with special content
           sender_id: userId,
           message_type: 'text',
-          message: `[AI Summary] ${summary}`,
+          message: `Here are the details for the service request:\n${summary}`,
         },
       });
 
