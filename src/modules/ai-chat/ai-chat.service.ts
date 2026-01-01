@@ -165,37 +165,55 @@ export class AiChatService {
    * Deactivates any existing active session
    */
   async createSession(userId: number) {
-    // Verify user is a customer and get customer ID
+    console.log('\n' + '='.repeat(80));
+    console.log(`📝 [CREATE SESSION] Called with userId: ${userId}`);
+    this.logger.log(`\n${'='.repeat(80)}`);
+    this.logger.log(`📝 [CREATE SESSION] Called with userId: ${userId}`);
+    
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
+    
+    console.log(`Customer lookup result:`, customer);
 
     if (!customer) {
+      this.logger.error(`❌ [CREATE SESSION] No customer found for user_id: ${userId}`);
       throw new NotFoundException('Customer profile not found');
     }
 
+    this.logger.log(`✅ [CREATE SESSION] Customer found: customer.id=${customer.id}, customer.user_id=${customer.user_id}`);
+
     return await this.prisma.$transaction(async (tx) => {
       // Deactivate any existing active session
-      await tx.ai_chat_sessions.updateMany({
+      const deactivated = await tx.ai_chat_sessions.updateMany({
         where: {
-          user_id: customer.id, // Use customer.id (customers.id), not users.id
+          user_id: customer.id, // Use customers.id
           is_active: true,
         },
         data: {
           is_active: false,
         },
       });
+      
+      this.logger.log(`🔄 [CREATE SESSION] Deactivated ${deactivated.count} old sessions for customer.id=${customer.id}`);
 
       // Create new session
       const sessionId = randomUUID();
       const session = await tx.ai_chat_sessions.create({
         data: {
-          user_id: customer.id, // Use customer.id (customers.id), not users.id
+          user_id: customer.id, // Use customers.id
           session_id: sessionId,
           is_active: true,
           last_active: new Date(),
         },
       });
+
+      this.logger.log(`✅ [CREATE SESSION] New session created:`);
+      this.logger.log(`   - session.id (UUID): ${session.id}`);
+      this.logger.log(`   - session.session_id: ${session.session_id}`);
+      this.logger.log(`   - session.user_id (customer.id): ${session.user_id}`);
+      this.logger.log(`${'='.repeat(80)}\n`);
 
       return {
         id: session.id,
@@ -210,6 +228,7 @@ export class AiChatService {
    * Get active session for a customer
    */
   async getActiveSession(userId: number) {
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -220,7 +239,7 @@ export class AiChatService {
 
     const session = await this.prisma.ai_chat_sessions.findFirst({
       where: {
-        user_id: customer.id, // Use customer.id (customers.id), not users.id
+        user_id: customer.id, // Use customers.id
         is_active: true,
       },
       include: {
@@ -254,6 +273,7 @@ export class AiChatService {
    * Get session history for a customer
    */
   async getSessionHistory(userId: number) {
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -264,13 +284,12 @@ export class AiChatService {
 
     const sessions = await this.prisma.ai_chat_sessions.findMany({
       where: {
-        user_id: customer.id, // Use customer.id (customers.id), not users.id
+        user_id: customer.id, // Use customers.id
       },
       orderBy: { created_at: 'desc' },
       include: {
-        messages: {
-          orderBy: { created_at: 'asc' },
-          take: 1, // Just get first message for preview
+        _count: {
+          select: { messages: true },
         },
       },
     });
@@ -282,7 +301,7 @@ export class AiChatService {
       isActive: session.is_active,
       createdAt: session.created_at,
       lastActive: session.last_active,
-      messageCount: session.messages.length,
+      messageCount: session._count.messages,
     }));
   }
 
@@ -290,19 +309,37 @@ export class AiChatService {
    * Send a message to AI and get response
    */
   async sendMessage(sessionId: string, userId: number, dto: SendMessageDto) {
+    console.log('\n' + '='.repeat(80));
+    console.log(`📨 [SEND MESSAGE] Called`);
+    console.log(`   - userId (from JWT): ${userId}`);
+    console.log(`   - sessionId: ${sessionId}`);
+    console.log(`   - message: ${dto.message}`);
+    
+    this.logger.log(`\n${'='.repeat(80)}`);
+    this.logger.log(`📨 [SEND MESSAGE] Called with:`);
+    this.logger.log(`   - userId (from JWT): ${userId}`);
+    this.logger.log(`   - sessionId: ${sessionId}`);
+    
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
+    
+    console.log(`Customer found:`, customer);
 
     if (!customer) {
+      this.logger.error(`❌ [SEND MESSAGE] No customer found for user_id: ${userId}`);
       throw new NotFoundException('Customer profile not found');
     }
+
+    this.logger.log(`✅ [SEND MESSAGE] Customer found: customer.id=${customer.id}, customer.user_id=${customer.user_id}`);
+    this.logger.log(`🔍 [SEND MESSAGE] Looking for session WHERE session_id='${sessionId}' AND user_id=${customer.id}`);
 
     // Find session
     const session = await this.prisma.ai_chat_sessions.findFirst({
       where: {
         session_id: sessionId,
-        user_id: customer.id, // Use customer.id (customers.id), not users.id
+        user_id: customer.id, // Use customers.id
       },
       include: {
         messages: {
@@ -312,8 +349,27 @@ export class AiChatService {
     });
 
     if (!session) {
+      this.logger.error(`❌ [SEND MESSAGE] Session NOT found!`);
+      this.logger.error(`   Expected: session_id='${sessionId}' AND user_id=${customer.id}`);
+      
+      // Debug: Check if session exists with different user_id
+      const anySession = await this.prisma.ai_chat_sessions.findFirst({
+        where: { session_id: sessionId },
+      });
+      
+      if (anySession) {
+        this.logger.error(`⚠️ [SEND MESSAGE] Session EXISTS but with DIFFERENT user_id: ${anySession.user_id}`);
+        this.logger.error(`   This means the session was created with users.id (${anySession.user_id}) instead of customers.id (${customer.id})`);
+        this.logger.error(`   SOLUTION: Delete old sessions and create a new one`);
+      } else {
+        this.logger.error(`⚠️ [SEND MESSAGE] Session does NOT exist at all with session_id='${sessionId}'`);
+      }
+      
       throw new NotFoundException('AI chat session not found');
     }
+
+    this.logger.log(`✅ [SEND MESSAGE] Session found: session.id=${session.id}, session.user_id=${session.user_id}, messages=${session.messages.length}`);
+    this.logger.log(`${'='.repeat(80)}\n`);
 
     if (!session.is_active) {
       throw new BadRequestException('Session is not active');
@@ -366,13 +422,37 @@ IMPORTANT:
     dbContext += dataStatusContext;
 
     // Save user message
-    await this.prisma.ai_chat_messages.create({
-      data: {
-        session_id: session.id,
-        sender_type: 'user',
-        message: dto.message,
-      },
-    });
+    console.log('\n💾 [SAVE USER MESSAGE] Attempting to save message');
+    console.log(`   Session ID (UUID): ${session.id}`);
+    console.log(`   Session.user_id (should be customer.id): ${session.user_id}`);
+    console.log(`   Customer.id we looked up: ${customer.id}`);
+    console.log(`   Sender Type: 'user'`);
+    console.log(`   Message: "${dto.message.substring(0, 50)}..."`);
+    
+    this.logger.log(`\n💾 [SAVE USER MESSAGE] Attempting to save message`);
+    this.logger.log(`   Session ID (UUID): ${session.id}`);
+    this.logger.log(`   Session.user_id (should be customer.id): ${session.user_id}`);
+    this.logger.log(`   Customer.id we looked up: ${customer.id}`);
+    this.logger.log(`   Sender Type: 'user'`);
+    this.logger.log(`   Message: "${dto.message.substring(0, 50)}..."`);
+    
+    try {
+      const userMsg = await this.prisma.ai_chat_messages.create({
+        data: {
+          session_id: session.id,
+          sender_type: 'user',
+          message: dto.message,
+        },
+      });
+      console.log(`✅ [USER MESSAGE SAVED] ID: ${userMsg.id}, Created at: ${userMsg.created_at}\n`);
+      this.logger.log(`✅ [USER MESSAGE SAVED] ID: ${userMsg.id}, Created at: ${userMsg.created_at}\n`);
+    } catch (error) {
+      console.error(`❌ [SAVE USER MESSAGE FAILED]`, error);
+      this.logger.error(`❌ [SAVE USER MESSAGE FAILED]`, error);
+      this.logger.error(`   Attempted to save to session.id: ${session.id}`);
+      this.logger.error(`   This session belongs to user_id: ${session.user_id}`);
+      throw error;
+    }
 
     // Get AI response with database context
     let aiResponse: string;
@@ -388,34 +468,41 @@ IMPORTANT:
     }
 
     // Save AI response
-    const aiMessage = await this.prisma.ai_chat_messages.create({
-      data: {
-        session_id: session.id,
-        sender_type: 'assistant',
-        message: aiResponse,
-      },
-    });
+    this.logger.log(`💾 [SAVE AI RESPONSE] Attempting to save AI message`);
+    try {
+      const aiMessage = await this.prisma.ai_chat_messages.create({
+        data: {
+          session_id: session.id,
+          sender_type: 'assistant',
+          message: aiResponse,
+        },
+      });
+      this.logger.log(`✅ [AI MESSAGE SAVED] ID: ${aiMessage.id}, Created at: ${aiMessage.created_at}`);
 
-    // Update last_active
-    await this.prisma.ai_chat_sessions.update({
-      where: { id: session.id },
-      data: { last_active: new Date() },
-    });
+      // Update last_active
+      await this.prisma.ai_chat_sessions.update({
+        where: { id: session.id },
+        data: { last_active: new Date() },
+      });
 
-    return {
-      userMessage: {
-        id: session.messages.length > 0 ? session.messages[session.messages.length - 1].id : null,
-        senderType: 'user',
-        message: dto.message,
-        createdAt: new Date(),
-      },
-      aiMessage: {
-        id: aiMessage.id,
-        senderType: 'assistant',
-        message: aiResponse,
-        createdAt: aiMessage.created_at,
-      },
-    };
+      return {
+        userMessage: {
+          id: session.messages.length > 0 ? session.messages[session.messages.length - 1].id : null,
+          senderType: 'user',
+          message: dto.message,
+          createdAt: new Date(),
+        },
+        aiMessage: {
+          id: aiMessage.id,
+          senderType: 'assistant',
+          message: aiResponse,
+          createdAt: aiMessage.created_at,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`❌ [SAVE AI MESSAGE FAILED]`, error);
+      throw error;
+    }
   }
 
   /**
@@ -431,6 +518,7 @@ IMPORTANT:
       requirements: string | null;
     }
   ) {
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -442,7 +530,7 @@ IMPORTANT:
     const session = await this.prisma.ai_chat_sessions.findFirst({
       where: {
         session_id: sessionId,
-        user_id: customer.id, // Use customer.id (customers.id), not users.id
+        user_id: customer.id, // Use customers.id
       },
       include: {
         messages: {
@@ -496,11 +584,16 @@ Be concise and extract only information that was explicitly mentioned in the con
       }
     }
 
-    // Save summary
+    // Save summary and close the session (set is_active to false)
     await this.prisma.ai_chat_sessions.update({
       where: { id: session.id },
-      data: { summary },
+      data: { 
+        summary,
+        is_active: false, // Close session after summary is generated
+      },
     });
+
+    this.logger.log(`✅ [SUMMARY SAVED] Session ${session.session_id} is now closed (is_active = false)`);
 
     return { summary };
   }
@@ -509,6 +602,7 @@ Be concise and extract only information that was explicitly mentioned in the con
    * End a session
    */
   async endSession(sessionId: string, userId: number) {
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -520,7 +614,7 @@ Be concise and extract only information that was explicitly mentioned in the con
     const session = await this.prisma.ai_chat_sessions.findFirst({
       where: {
         session_id: sessionId,
-        user_id: customer.id, // Use customer.id (customers.id), not users.id
+        user_id: customer.id, // Use customers.id
       },
     });
 
@@ -650,6 +744,7 @@ Be concise and extract only information that was explicitly mentioned in the con
    * Get session by ID (for internal use)
    */
   async getSessionById(sessionId: string, userId: number) {
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -661,7 +756,12 @@ Be concise and extract only information that was explicitly mentioned in the con
     const session = await this.prisma.ai_chat_sessions.findFirst({
       where: {
         session_id: sessionId,
-        user_id: customer.id, // Use customer.id (customers.id), not users.id
+        user_id: customer.id, // Use customers.id
+      },
+      include: {
+        messages: {
+          orderBy: { created_at: 'asc' },
+        },
       },
     });
 
@@ -669,7 +769,22 @@ Be concise and extract only information that was explicitly mentioned in the con
       throw new NotFoundException('AI chat session not found');
     }
 
-    return session;
+    return {
+      id: session.id,
+      sessionId: session.session_id,
+      session_id: session.session_id, // For backward compatibility
+      summary: session.summary,
+      isActive: session.is_active,
+      createdAt: session.created_at,
+      lastActive: session.last_active,
+      messages: session.messages.map((msg) => ({
+        id: msg.id,
+        senderType: msg.sender_type,
+        message: msg.message,
+        createdAt: msg.created_at,
+      })),
+      messageCount: session.messages.length,
+    };
   }
 
   /**
@@ -682,6 +797,7 @@ Be concise and extract only information that was explicitly mentioned in the con
     this.logger.log(`   User ID: ${userId}`);
     this.logger.log(`${'='.repeat(80)}\n`);
 
+    // Get customer record directly
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
     });
@@ -693,7 +809,7 @@ Be concise and extract only information that was explicitly mentioned in the con
     const session = await this.prisma.ai_chat_sessions.findFirst({
       where: {
         session_id: sessionId,
-        user_id: customer.id,
+        user_id: customer.id, // Use customers.id
       },
       include: {
         messages: {
@@ -707,6 +823,26 @@ Be concise and extract only information that was explicitly mentioned in the con
     }
 
     this.logger.log(`📨 [SESSION FOUND] ${session.messages.length} messages in conversation`);
+
+    // Debug: Log actual message sender types
+    this.logger.log(`🔍 [DEBUG] Message sender types:`);
+    session.messages.forEach((msg, idx) => {
+      this.logger.log(`   ${idx + 1}. sender_type: "${msg.sender_type}" (type: ${typeof msg.sender_type})`);
+    });
+
+    // Check if there are any user messages
+    const hasUserMessages = session.messages.some(msg => {
+      const isUser = msg.sender_type === 'user';
+      this.logger.log(`   Checking message ${msg.id}: sender_type="${msg.sender_type}", isUser=${isUser}`);
+      return isUser;
+    });
+    
+    this.logger.log(`📊 [USER MESSAGES CHECK] hasUserMessages: ${hasUserMessages}`);
+    
+    if (!hasUserMessages) {
+      this.logger.warn(`⚠️ [NO USER MESSAGES] Session has no user messages yet, returning null`);
+      return { service: null, zipcode: null, budget: null, requirements: null };
+    }
 
     // Build conversation history
     const conversationHistory = session.messages.map((msg) => ({
