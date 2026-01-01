@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { StripeService } from './stripe.service';
+import { ChatGateway } from '../../chat/chat.gateway';
 
 @Injectable()
 export class InvoicingService {
@@ -9,6 +10,8 @@ export class InvoicingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
+    @Optional()
+    private readonly chatGateway?: ChatGateway,
   ) {}
 
   /**
@@ -214,7 +217,7 @@ export class InvoicingService {
   }
 
   /**
-   * 🆕 Send payment link to customer via chat
+   * 🆕 Send payment link to customer via chat (Real-time via Socket.IO)
    */
   private async sendPaymentLinkViaChat(
     jobId: number,
@@ -240,7 +243,7 @@ export class InvoicingService {
       }
 
       // Create message with payment link in existing chat
-      await this.prisma.messages.create({
+      const message = await this.prisma.messages.create({
         data: {
           chat_id: chat.id,
           sender_type: 'service_provider',
@@ -250,7 +253,34 @@ export class InvoicingService {
         },
       });
 
-      this.logger.log(`✅ Payment link sent via existing chat for job ${jobId}`);
+      this.logger.log(`✅ Payment link saved to chat for job ${jobId}`);
+
+      // 🆕 Emit real-time message via Socket.IO if ChatGateway is available
+      if (this.chatGateway && this.chatGateway.server) {
+        try {
+          const messageData = {
+            id: message.id,
+            chatId: chat.id,
+            sender_type: message.sender_type,
+            sender_id: message.sender_id,
+            sender_name: `Service Provider`,
+            message: message.message,
+            message_type: message.message_type,
+            paymentLink: paymentLink, // 🆕 Include clickable payment link
+            amount: amount,
+            created_at: message.created_at,
+          };
+
+          // Emit to the specific chat room so customers see it in real-time
+          this.chatGateway.server.to(chat.id).emit('new_message', messageData);
+          this.logger.log(`✅ Real-time payment link emitted via Socket.IO for chat ${chat.id}`);
+        } catch (socketError) {
+          this.logger.warn(
+            `Could not emit via Socket.IO: ${socketError.message}. Message is saved in DB.`,
+          );
+          // Continue - message is already saved to DB
+        }
+      }
     } catch (error) {
       this.logger.error(
         `Failed to send payment link via chat: ${error.message}`,

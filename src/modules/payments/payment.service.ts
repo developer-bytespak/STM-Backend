@@ -21,6 +21,7 @@ export class PaymentService {
   /**
    * Process job payment by creating and sending Stripe invoice
    * This is called when provider marks job as complete
+   * Creates payment record if it doesn't exist
    */
   async processJobPayment(jobId: number) {
     this.logger.log(`Processing payment for job ${jobId}`);
@@ -42,8 +43,17 @@ export class PaymentService {
       throw new BadRequestException('Job must be completed before sending invoice');
     }
 
-    if (!job.payment) {
-      throw new NotFoundException('Payment record not found');
+    // Create payment record if it doesn't exist (payment only created when job completes)
+    let payment = job.payment;
+    if (!payment) {
+      payment = await this.prisma.payments.create({
+        data: {
+          job_id: jobId,
+          amount: Number(job.price) || 0, // Use job price as payment amount
+          status: 'pending',
+        },
+      });
+      this.logger.log(`Created payment record for job ${jobId}: amount=${payment.amount}`);
     }
 
     // Check if invoice already exists
@@ -63,7 +73,7 @@ export class PaymentService {
 
     // Update payment status to indicate invoice was sent
     await this.prisma.payments.update({
-      where: { id: job.payment.id },
+      where: { id: payment.id },
       data: {
         status: 'pending',
         notes: `Invoice ${invoice.invoiceId} sent to customer`,
@@ -263,20 +273,22 @@ export class PaymentService {
 
   /**
    * Calculate provider earnings
+   * Find provider by user_id (authenticated user)
    */
-  async calculateEarnings(providerId: number) {
+  async calculateEarnings(userId: number) {
+    // Find provider by user_id relationship
     const provider = await this.prisma.service_providers.findUnique({
-      where: { id: providerId },
+      where: { user_id: userId },
     });
 
     if (!provider) {
-      throw new NotFoundException('Provider not found');
+      throw new NotFoundException('Provider profile not found. Please complete your provider setup.');
     }
 
     const payments = await this.prisma.payments.findMany({
       where: {
         job: {
-          provider_id: providerId,
+          provider_id: provider.id,
         },
         status: 'received',
       },
@@ -288,7 +300,7 @@ export class PaymentService {
     );
 
     return {
-      providerId,
+      providerId: provider.id,
       totalEarnings,
       totalJobs: payments.length,
       currentBalance: Number(provider.earning),

@@ -112,16 +112,7 @@ export class JobsService {
         },
       });
 
-      // 2. Create payment record
-      await tx.payments.create({
-        data: {
-          job_id: job.id,
-          amount: 0, // Will be set when job is confirmed/negotiated
-          status: 'pending',
-        },
-      });
-
-      // 3. Create chat
+      // 2. Create chat (payment will be created when job is completed)
       const chat = await tx.chat.create({
         data: {
           job_id: job.id,
@@ -337,31 +328,7 @@ export class JobsService {
         },
       });
 
-      // 2b. Reset payment if exists (or create if doesn't)
-      const existingPayment = await tx.payments.findUnique({
-        where: { job_id: jobId },
-      });
-
-      if (existingPayment) {
-        await tx.payments.update({
-          where: { job_id: jobId },
-          data: {
-            status: 'pending',
-            marked_by: null,
-            marked_at: null,
-            method: null,
-            notes: null,
-          },
-        });
-      } else {
-        await tx.payments.create({
-          data: {
-            job_id: jobId,
-            amount: 0,
-            status: 'pending',
-          },
-        });
-      }
+      // 2b. Clear job state for reassignment (payment will be created when job completes)
 
       // 4. Create new chat
       const newChat = await tx.chat.create({
