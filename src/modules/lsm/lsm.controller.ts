@@ -206,6 +206,23 @@ export class LsmController {
   }
 
   /**
+   * Generate onboarding link for pending provider
+   */
+  @Post('providers/:id/generate-onboarding-link')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate onboarding link for pending provider' })
+  @ApiResponse({ status: 200, description: 'Onboarding link generated successfully' })
+  @ApiResponse({ status: 400, description: 'Provider is not in pending status' })
+  @ApiResponse({ status: 403, description: 'Provider not in your region' })
+  @ApiResponse({ status: 404, description: 'Provider not found' })
+  async generateOnboardingLink(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) providerId: number,
+  ) {
+    return this.lsmService.generateOnboardingLink(userId, providerId);
+  }
+
+  /**
    * Set provider status (active/inactive)
    */
   @Post('providers/:id/set-status')

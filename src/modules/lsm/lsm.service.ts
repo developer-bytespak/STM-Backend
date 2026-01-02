@@ -1071,6 +1071,72 @@ export class LsmService {
   }
 
   /**
+   * Generate onboarding link for provider
+   */
+  async generateOnboardingLink(userId: number, providerId: number) {
+    const lsm = await this.prisma.local_service_managers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!lsm) {
+      throw new NotFoundException('LSM profile not found');
+    }
+
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { id: providerId },
+      include: { user: true },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Provider not found');
+    }
+
+    if (provider.lsm_id !== lsm.id) {
+      throw new ForbiddenException('This provider is not in your region');
+    }
+
+    if (provider.status !== 'pending') {
+      throw new BadRequestException('Provider is not in pending status');
+    }
+
+    // Generate unique token (simple UUID)
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(16).toString('hex');
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+    // For now, just return token (no DB storage)
+    const onboardingLink = `http://localhost:3000/onboarding/${token}`;
+
+    console.log(`
+╔════════════════════════════════════════════════════════════╗
+║     ✅ ONBOARDING LINK GENERATED SUCCESSFULLY              ║
+╚════════════════════════════════════════════════════════════╝
+LSM ID: ${lsm.id}
+LSM Region: ${lsm.region}
+Provider: ${provider.business_name}
+Provider ID: ${provider.id}
+Provider Email: ${provider.user.email}
+Token: ${token}
+Link: ${onboardingLink}
+Expires At: ${expiresAt.toLocaleString()}
+════════════════════════════════════════════════════════════
+    `);
+
+    return {
+      message: 'Onboarding link generated successfully',
+      lsm_id: lsm.id,
+      lsm_region: lsm.region,
+      provider_id: providerId,
+      provider_email: provider.user.email,
+      provider_business_name: provider.business_name,
+      token: token,
+      onboarding_link: onboardingLink,
+      expires_at: expiresAt,
+      expires_in_hours: 48,
+    };
+  }
+
+  /**
    * Set provider status (active/inactive)
    */
   async setProviderStatus(userId: number, providerId: number, dto: SetProviderStatusDto) {

@@ -466,9 +466,9 @@ model meetings {
   lsm_id                 Int
   provider_email         String?                
   provider_business_name String?               
-  google_event_id        String                 @unique 
-  meet_link              String
-  conference_id          String?
+  zoom_meeting_id        String      @unique     // Zoom's meeting ID (for reschedule/delete)
+  zoom_join_url          String                  // Provider joins via this link
+  zoom_start_url         String                  // LSM starts meeting via this link (critical)
   scheduled_start        DateTime
   scheduled_end          DateTime
   timezone               String                 @default("UTC")
@@ -487,7 +487,7 @@ model meetings {
 
   @@index([provider_id])
   @@index([lsm_id])
-  @@index([google_event_id])
+  @@index([zoom_meeting_id])
   @@index([meeting_status])
   @@index([scheduled_start])
 }
