@@ -8,6 +8,7 @@ import {
   UseInterceptors,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AiChatService } from './ai-chat.service';
@@ -148,24 +149,54 @@ export class AiChatController {
   @ApiOperation({ summary: 'Create a chat from AI flow with summary injection' })
   @ApiResponse({ status: 201, description: 'Chat created successfully' })
   @ApiResponse({ status: 404, description: 'Session or provider not found' })
+  @ApiResponse({ status: 400, description: 'Unpaid job exists - payment required' })
   async createChatFromAI(
     @CurrentUser('id') userId: number,
     @Body() dto: CreateChatFromAiDto,
   ) {
-    // Get session summary
-    const session = await this.aiChatService.getSessionById(dto.aiSessionId, userId);
+    console.log('[AI Chat Controller] Creating chat from AI flow for user:', userId);
+    console.log('[AI Chat Controller] DTO:', JSON.stringify(dto, null, 2));
     
-    if (!session.summary) {
-      throw new Error('Session summary not found. Please generate summary first.');
-    }
+    try {
+      // Get session summary and extracted data
+      const session = await this.aiChatService.getSessionById(dto.aiSessionId, userId);
+      
+      if (!session.summary) {
+        throw new Error('Session summary not found. Please generate summary first.');
+      }
 
-    // Create chat with AI summary injection
-    return this.chatService.createChatFromAI(
-      userId,
-      dto.providerId,
-      session.session_id,
-      session.summary,
-    );
+      console.log('[AI Chat Controller] Session summary found, length:', session.summary.length);
+
+      // Extract data from conversation for job creation
+      const extractedData = await this.aiChatService.extractDataFromConversation(dto.aiSessionId, userId);
+      
+      console.log('[AI Chat Controller] Extracted data:', JSON.stringify(extractedData, null, 2));
+
+      // Create chat with AI summary injection
+      return this.chatService.createChatFromAI(
+        userId,
+        dto.providerId,
+        session.session_id,
+        session.summary,
+        extractedData, // Pass extracted data for job creation
+      );
+    } catch (error) {
+      // Handle unpaid job error specifically
+      if (error.response && error.response.statusCode === 400 && error.response.message?.includes('unpaid job')) {
+        // Extract job ID from error message (format: "You have an unpaid job (#30 - Service Name)")
+        const jobIdMatch = error.response.message.match(/#(\d+)/);
+        const unpaidJobId = jobIdMatch ? parseInt(jobIdMatch[1]) : null;
+        
+        throw new BadRequestException({
+          message: error.response.message,
+          unpaidJobId: unpaidJobId,
+          requiresPayment: true,
+        });
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 }
 

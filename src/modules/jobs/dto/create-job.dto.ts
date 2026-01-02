@@ -19,19 +19,21 @@ export class CreateJobDto {
   @Type(() => Number)
   providerId: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Answers to service-specific questions',
     example: { urgency: 'Emergency', toilet_type: 'Standard' },
   })
   @IsObject()
-  answers: Record<string, any>;
+  @IsOptional()
+  answers?: Record<string, any>;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Service location',
     example: '123 Main St, New York, NY',
   })
   @IsString()
-  location: string;
+  @IsOptional()
+  location?: string;
 
   @ApiProperty({
     description: 'Service zipcode',
@@ -73,4 +75,12 @@ export class CreateJobDto {
   @IsOptional()
   @Type(() => Number)
   customerBudget?: number;
+
+  @ApiPropertyOptional({
+    description: 'Flag to indicate job created from AI flow',
+    example: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  fromAI?: boolean;
 }

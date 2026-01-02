@@ -3,12 +3,22 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ChatGateway } from './chat.gateway';
+import { JobsService } from '../jobs/jobs.service';
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
+    @Inject(forwardRef(() => JobsService))
+    private readonly jobsService: JobsService,
+  ) {}
 
   /**
    * Get all chats for a customer
@@ -379,16 +389,27 @@ export class ChatService {
 
   /**
    * Create a chat from AI flow with summary injection
+   * Also creates a job request using extracted data from AI conversation
    */
   async createChatFromAI(
     userId: number,
     providerId: number,
     aiSessionId: string,
     summary: string,
+    extractedData?: any, // Extracted data from AI conversation (service, zipcode, budget, requirements)
   ) {
-    // Verify customer exists
+    // Verify customer exists and include user details
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: userId },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            profile_picture: true,
+          },
+        },
+      },
     });
 
     if (!customer) {
@@ -426,18 +447,172 @@ export class ChatService {
         is_active: true,
         is_deleted: false,
       },
+      include: {
+        job: true, // Include job if it exists
+      },
     });
 
     if (existingChat) {
-      // Return existing chat
+      // Return existing chat with job info
+      console.log('[AI Chat] Chat already exists:', existingChat.id, 'Job ID:', existingChat.job?.id);
       return {
         chatId: existingChat.id,
+        jobId: existingChat.job?.id,
         message: 'Chat already exists',
       };
     }
 
-    // Create chat with AI flow flag
+    // Step 1: Create job FIRST (outside transaction, as JobsService has its own transaction)
+    let jobId: number | null = null;
+    let existingChatFromJob: any = null;
+
+    if (extractedData && extractedData.service) {
+      try {
+        console.log('\n[AI Chat] ========================================');
+        console.log('[AI Chat] STEP 1: Creating job with extracted data');
+        console.log('[AI Chat] Extracted data:', JSON.stringify(extractedData, null, 2));
+        
+        // Find service by name (case-insensitive)
+        const service = await this.prisma.services.findFirst({
+          where: {
+            name: {
+              contains: extractedData.service || '',
+              mode: 'insensitive',
+            },
+            status: 'approved',
+          },
+        });
+
+        if (!service) {
+          console.error(`[AI Chat] ❌ Service not found for name: "${extractedData.service}"`);
+          console.log('[AI Chat] Will create chat without job');
+        } else {
+          console.log(`[AI Chat] ✅ Found service: ${service.name} (ID: ${service.id})`);
+          
+          // Prepare job data with AI-extracted info and smart defaults
+          const jobData = {
+            serviceId: service.id,
+            providerId: providerId,
+            zipcode: extractedData.zipcode || customer.zipcode || '',
+            location: customer.address || '',
+            // Parse budget - remove $ and other currency symbols
+            customerBudget: extractedData.budget 
+              ? parseFloat(extractedData.budget.toString().replace(/[$,]/g, ''))
+              : undefined,
+            answers: {
+              requirements: extractedData.requirements || '',
+              property_type: 'residential',
+              service_frequency: 'one-time',
+              urgency_level: 'normal',
+              ai_generated: true,
+            },
+            fromAI: true,
+          };
+
+          console.log('[AI Chat] Job data prepared:', JSON.stringify(jobData, null, 2));
+          console.log('[AI Chat] Calling JobsService.createJob...');
+
+          // Create job using JobsService (has its own transaction AND creates chat)
+          const result = await this.jobsService.createJob(userId, jobData);
+          jobId = result.job.id;
+          
+          console.log(`[AI Chat] ✅ Job created successfully with ID: ${jobId}`);
+          
+          // CRITICAL: JobsService already created a chat! Find it instead of creating duplicate
+          existingChatFromJob = await this.prisma.chat.findFirst({
+            where: {
+              job_id: jobId,
+              customer_id: customer.id,
+              provider_id: providerId,
+              is_active: true,
+            },
+          });
+          
+          if (existingChatFromJob) {
+            console.log(`[AI Chat] ✅ Found chat created by JobsService: ${existingChatFromJob.id}`);
+          }
+        }
+      } catch (error) {
+        console.error('[AI Chat] ❌ Error creating job from AI data:', error.message);
+        console.error('[AI Chat] Error details:', error);
+        console.error('[AI Chat] Stack trace:', error.stack);
+        
+        // If it's an unpaid job error, throw it to prevent chat creation
+        if (error.status === 400 && error.message?.includes('unpaid job')) {
+          console.log('[AI Chat] 🚫 BLOCKING: Unpaid job detected - preventing chat creation');
+          throw error; // Re-throw to controller to show payment dialog
+        }
+        
+        console.log('[AI Chat] Will continue with chat creation without job');
+      }
+    } else {
+      console.log('[AI Chat] ⚠️  No extracted data or service name provided');
+      console.log('[AI Chat] extractedData:', extractedData);
+      console.log('[AI Chat] Will create chat without job');
+    }
+
+    // Step 2: Use existing chat from JobsService OR create new chat
+    console.log('[AI Chat] ========================================');
+    
+    if (existingChatFromJob) {
+      // Job was created and JobsService already created the chat - use it!
+      console.log('[AI Chat] STEP 2: Using existing chat from JobsService');
+      console.log('[AI Chat] Chat ID:', existingChatFromJob.id);
+      console.log('[AI Chat] Job ID:', jobId);
+      
+      // Update the chat to mark it as from AI flow
+      await this.prisma.chat.update({
+        where: { id: existingChatFromJob.id },
+        data: {
+          from_ai_flow: true,
+          ai_session_id: aiSessionId,
+        },
+      });
+      
+      // Get the initial message created by JobsService
+      const existingMessages = await this.prisma.messages.findMany({
+        where: { chat_id: existingChatFromJob.id },
+        orderBy: { created_at: 'asc' },
+        take: 1,
+      });
+      
+      const initialMessage = existingMessages[0];
+      
+      // Prepare data for Socket.IO events (already sent by JobsService, but send again for customer)
+      const messageData = {
+        id: initialMessage.id,
+        chatId: existingChatFromJob.id,
+        jobId: jobId,
+        senderId: userId,
+        senderName: `${customer.user?.first_name || 'Customer'} ${customer.user?.last_name || ''}`,
+        senderRole: 'customer',
+        content: initialMessage.message,
+        timestamp: initialMessage.created_at,
+        type: initialMessage.message_type,
+      };
+      
+      // Emit to customer's personal room so they see the message immediately
+      this.chatGateway.server.to(`user:${userId}`).emit('new_message', messageData);
+      
+      console.log(`[AI Chat] 📤 Message emitted to customer room: user:${userId}`);
+      console.log('[AI Chat] ========================================');
+      console.log('[AI Chat] ✅ COMPLETE: Using existing chat from job creation');
+      console.log('[AI Chat] Chat ID:', existingChatFromJob.id);
+      console.log('[AI Chat] Job ID:', jobId);
+      console.log('[AI Chat] ========================================\n');
+      
+      return {
+        chatId: existingChatFromJob.id,
+        jobId: jobId,
+        message: 'Using existing chat from job creation',
+      };
+    }
+    
+    // No existing chat from job - create new chat
+    console.log('[AI Chat] STEP 2: Creating new chat', jobId ? `and linking to job ${jobId}` : '(no job)');
+    
     return await this.prisma.$transaction(async (tx) => {
+      // Create chat with AI flow flag and optional job linkage
       const chat = await tx.chat.create({
         data: {
           customer_id: customer.id,
@@ -445,24 +620,84 @@ export class ChatService {
           from_ai_flow: true,
           ai_session_id: aiSessionId,
           is_active: true,
+          job_id: jobId, // Link chat to job if created
         },
       });
 
-      // Create system message with AI summary
-      // Using sender_type='customer' but with a special message format to indicate it's from AI
-      await tx.messages.create({
+      // Create system message with AI summary (without smart defaults - they're stored in job)
+      const message = await tx.messages.create({
         data: {
           chat_id: chat.id,
-          sender_type: 'customer', // System messages use customer type but with special content
+          sender_type: 'customer',
           sender_id: userId,
           message_type: 'text',
           message: `Here are the details for the service request:\n${summary}`,
         },
       });
 
+      // Create notification with job ID if available for proper redirect
+      const notificationTitle = jobId 
+        ? `New Job Request [job:${jobId}]`
+        : `New Job Request [chat:${chat.id}]`;
+
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: provider.user_id,
+          type: 'job',
+          title: notificationTitle,
+          message: `You have a new job request from ${customer.user?.first_name || 'Customer'} ${customer.user?.last_name || ''}`,
+        },
+      });
+
+      // Prepare data for Socket.IO events
+      const messageData = {
+        id: message.id,
+        chatId: chat.id,
+        jobId: jobId,
+        senderId: userId,
+        senderName: `${customer.user?.first_name || 'Customer'} ${customer.user?.last_name || ''}`,
+        senderRole: 'customer',
+        content: message.message,
+        timestamp: message.created_at,
+        type: message.message_type,
+      };
+
+      // Emit combined event: notification + chat for dual action (redirect + auto-open)
+      this.chatGateway.server.to(`user:${provider.user_id}`).emit('new_job_with_chat', {
+        notification: {
+          type: 'job',
+          jobId: jobId,
+          chatId: chat.id,
+          title: notificationTitle,
+          message: `New job request from ${customer.user?.first_name || 'Customer'} ${customer.user?.last_name || ''}`,
+        },
+        chat: messageData,
+      });
+      
+      // Also emit to chat room for real-time updates
+      this.chatGateway.server.to(chat.id).emit('new_message', messageData);
+      
+      // CRITICAL: Emit to customer's personal room so they see the message immediately
+      this.chatGateway.server.to(`user:${userId}`).emit('new_message', messageData);
+      
+      console.log(`[AI Chat] 📤 Message emitted to:`);  
+      console.log(`  - Provider room: user:${provider.user_id}`);
+      console.log(`  - Customer room: user:${userId}`);
+      console.log(`  - Chat room: ${chat.id}`);
+
+      console.log('[AI Chat] ========================================');
+      console.log('[AI Chat] ✅ COMPLETE: Chat and job creation finished');
+      console.log('[AI Chat] Chat ID:', chat.id);
+      console.log('[AI Chat] Job ID:', jobId || 'none');
+      console.log('[AI Chat] ========================================\n');
+
       return {
         chatId: chat.id,
-        message: 'Chat created successfully with AI summary',
+        jobId: jobId,
+        message: jobId 
+          ? 'Chat and job request created successfully'
+          : 'Chat created successfully with AI summary',
       };
     });
   }
