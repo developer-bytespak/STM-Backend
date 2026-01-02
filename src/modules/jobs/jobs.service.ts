@@ -69,20 +69,28 @@ export class JobsService {
       throw new ForbiddenException('Your account is suspended. Contact support.');
     }
 
-    // Check if customer has any unpaid jobs
+    // Check if customer has unpaid jobs with DIFFERENT providers
+    // Allow creating jobs with the same provider (for payment/continuation)
     const unpaidJob = await this.prisma.jobs.findFirst({
       where: {
         customer_id: customer.id,
+        provider_id: { not: dto.providerId }, // Only block if different provider
         status: { in: ['new', 'in_progress', 'completed'] },
       },
       include: {
         service: { select: { name: true } },
+        service_provider: {
+          include: {
+            user: { select: { first_name: true, last_name: true } },
+          },
+        },
       },
     });
 
     if (unpaidJob) {
+      const providerName = `${unpaidJob.service_provider.user.first_name} ${unpaidJob.service_provider.user.last_name}`;
       throw new BadRequestException(
-        `You have an unpaid job (#${unpaidJob.id} - ${unpaidJob.service.name}). Please complete payment before booking a new service.`,
+        `You have an unpaid job (#${unpaidJob.id} - ${unpaidJob.service.name}) with ${providerName}. Please complete payment before booking with another provider.`,
       );
     }
 

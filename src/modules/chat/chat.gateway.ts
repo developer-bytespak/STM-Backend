@@ -94,9 +94,13 @@ export class ChatGateway
       client.data.userId = payload.sub;
       client.data.userRole = payload.role;
 
+      // Join user to their personal room for direct messaging
+      client.join(`user:${payload.sub}`);
+
       this.logger.log(
         `User ${payload.sub} (${payload.role}) connected - Socket ID: ${client.id}`,
       );
+      this.logger.log(`User ${payload.sub} joined personal room: user:${payload.sub}`);
 
       // Notify client of successful connection
       client.emit('connected', {
@@ -353,8 +357,30 @@ export class ChatGateway
       // (sender already has the message from optimistic update)
       client.to(chatId).emit('new_message', messageData);
 
+      // Also emit to recipient personal rooms to ensure delivery even if they haven't joined chat
+      const recipientUserIds: number[] = [];
+      if (senderType === 'customer') {
+        recipientUserIds.push(chat.service_provider.user.id);
+        if (chat.local_service_manager) {
+          recipientUserIds.push(chat.local_service_manager.user.id);
+        }
+      } else if (senderType === 'service_provider') {
+        recipientUserIds.push(chat.customer.user.id);
+        if (chat.local_service_manager) {
+          recipientUserIds.push(chat.local_service_manager.user.id);
+        }
+      } else if (senderType === 'local_service_manager') {
+        recipientUserIds.push(chat.customer.user.id);
+        recipientUserIds.push(chat.service_provider.user.id);
+      }
+
+      // Emit to each recipient's personal room
+      for (const recipientUserId of recipientUserIds) {
+        this.server.to(`user:${recipientUserId}`).emit('new_message', messageData);
+      }
+
       this.logger.log(
-        `Message ${newMessage.id} broadcasted to chat ${chatId}`,
+        `Message ${newMessage.id} broadcasted to chat ${chatId} and ${recipientUserIds.length} personal rooms`,
       );
 
       // Create notification for offline recipients

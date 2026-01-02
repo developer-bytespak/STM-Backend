@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
+import { JobsModule } from '../jobs/jobs.module';
 
 @Module({
   imports: [
@@ -10,6 +11,7 @@ import { ChatGateway } from './chat.gateway';
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '2h' },
     }),
+    forwardRef(() => JobsModule),
   ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],

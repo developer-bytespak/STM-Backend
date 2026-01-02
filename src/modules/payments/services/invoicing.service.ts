@@ -273,7 +273,13 @@ export class InvoicingService {
 
           // Emit to the specific chat room so customers see it in real-time
           this.chatGateway.server.to(chat.id).emit('new_message', messageData);
-          this.logger.log(`✅ Real-time payment link emitted via Socket.IO for chat ${chat.id}`);
+          
+          // CRITICAL: Also emit to customer's personal room to ensure delivery
+          this.chatGateway.server.to(`user:${customerId}`).emit('new_message', messageData);
+          
+          this.logger.log(`✅ Real-time payment link emitted via Socket.IO:`);
+          this.logger.log(`  - Chat room: ${chat.id}`);
+          this.logger.log(`  - Customer personal room: user:${customerId}`);
         } catch (socketError) {
           this.logger.warn(
             `Could not emit via Socket.IO: ${socketError.message}. Message is saved in DB.`,
