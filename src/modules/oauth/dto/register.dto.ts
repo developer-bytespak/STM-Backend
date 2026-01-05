@@ -5,13 +5,13 @@ import {
   IsString, 
   MinLength, 
   IsEnum, 
-  IsPhoneNumber, 
   IsOptional, 
   IsArray, 
   ArrayMinSize, 
   IsNumber, 
   Min, 
-  IsBoolean 
+  IsBoolean,
+  Matches,
 } from 'class-validator';
 import { UserRole } from '../../users/enums/user-role.enum';
 import { Type } from 'class-transformer';
@@ -27,9 +27,14 @@ export class RegisterDto {
 
   @ApiProperty({
     description: 'User phone number',
-    example: '+1234567890',
+    example: '+1 (234) 567-8900 or 1234567890 or +1234567890',
   })
-  @IsPhoneNumber('US')
+  @Matches(
+    /^(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}$|^\+1\d{10}$|^\d{10,11}$/,
+    {
+      message: 'Phone number must be a valid US phone number (e.g., +1 (234) 567-8900, 234-567-8900, or 2345678900)',
+    },
+  )
   @IsNotEmpty()
   phoneNumber: string;
 

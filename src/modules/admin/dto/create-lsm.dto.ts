@@ -4,7 +4,7 @@ import {
   IsNotEmpty,
   IsString,
   MinLength,
-  IsPhoneNumber,
+  Matches,
 } from 'class-validator';
 
 export class CreateLsmDto {
@@ -43,10 +43,15 @@ export class CreateLsmDto {
   lastName: string;
 
   @ApiProperty({
-    description: 'Phone number',
-    example: '+15551234567',
+    description: 'Phone number (US format)',
+    example: '+1 (555) 123-4567 or 555-123-4567 or 5551234567',
   })
-  @IsPhoneNumber('US')
+  @Matches(
+    /^(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}$|^\+1\d{10}$|^\d{10,11}$/,
+    {
+      message: 'Phone number must be a valid US phone number (e.g., +1 (555) 123-4567, 555-123-4567, or 5551234567)',
+    },
+  )
   @IsNotEmpty()
   phoneNumber: string;
 
