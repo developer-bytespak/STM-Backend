@@ -152,6 +152,17 @@ export class MeetingsService {
         zoomMeetingData.password,
       );
 
+      // Send notification to provider
+      await this.prisma.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: provider.user_id,
+          type: 'system',
+          title: 'Meeting Scheduled',
+          message: `Your meeting "${meetingTitle}" has been scheduled for ${startTime.toLocaleString()}. Meeting link has been sent to your email.`,
+        },
+      });
+
       return {
         ...meeting,
         zoom_password: zoomMeetingData.password,
@@ -431,6 +442,17 @@ STM Team
 ⏱️  Duration: ${duration} minutes
       `);
 
+      // Send notification to provider about rescheduling
+      await this.prisma.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: updatedMeeting.provider.user_id,
+          type: 'system',
+          title: 'Meeting Rescheduled',
+          message: `Your meeting has been rescheduled to ${newStartTime.toLocaleString()}. Updated meeting link has been sent to your email.`,
+        },
+      });
+
       return updatedMeeting;
     } catch (error) {
       this.logger.error('Failed to reschedule meeting', error);
@@ -503,6 +525,17 @@ Zoom Meeting ID: ${meeting.zoom_meeting_id}
 Provider: ${cancelledMeeting.provider.business_name}
 Cancellation Reason: ${reason || 'Not specified'}
       `);
+
+      // Send notification to provider about cancellation
+      await this.prisma.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: cancelledMeeting.provider.user_id,
+          type: 'system',
+          title: 'Meeting Cancelled',
+          message: `Your meeting "${cancelledMeeting.title}" has been cancelled.${reason ? ` Reason: ${reason}` : ''}`,
+        },
+      });
 
       return cancelledMeeting;
     } catch (error) {
