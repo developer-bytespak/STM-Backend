@@ -298,6 +298,54 @@ export class AdminController {
   // ==================== DASHBOARD ====================
 
   /**
+   * Get dashboard core statistics
+   */
+  @Get('dashboard/stats')
+  @ApiOperation({ summary: 'Get core dashboard statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard stats retrieved successfully' })
+  async getDashboardStats() {
+    return this.adminService.getDashboardStats();
+  }
+
+  /**
+   * Get recent activities feed
+   */
+  @Get('activities')
+  @ApiOperation({ summary: 'Get recent activities/events on the platform' })
+  @ApiResponse({ status: 200, description: 'Activities retrieved successfully' })
+  async getActivities(
+    @Query('limit') limit?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.adminService.getActivities(
+      limit ? parseInt(limit) : 10,
+      type,
+    );
+  }
+
+  /**
+   * Get pending approvals by type
+   */
+  @Get('pending-actions')
+  @ApiOperation({ summary: 'Get count of pending approvals by type' })
+  @ApiResponse({ status: 200, description: 'Pending actions retrieved successfully' })
+  async getPendingActions() {
+    return this.adminService.getPendingActions();
+  }
+
+  /**
+   * Get revenue data for chart
+   */
+  @Get('revenue')
+  @ApiOperation({ summary: 'Get revenue chart data by period' })
+  @ApiResponse({ status: 200, description: 'Revenue data retrieved successfully' })
+  async getRevenue(
+    @Query('period') period?: string,
+  ) {
+    return this.adminService.getRevenue(period || '7days');
+  }
+
+  /**
    * Get admin dashboard overview
    */
   @Get('dashboard')
