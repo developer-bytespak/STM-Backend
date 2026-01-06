@@ -81,8 +81,8 @@ export class InvoicingService {
 
     this.logger.log(`Invoice ${invoice.id} created for job ${jobId}`);
 
-    // 🆕 Send payment link via chat to customer
-    await this.sendPaymentLinkViaChat(
+    // 🆕 Send payment link via chat to customer (returns chat id if available)
+    const chatId = await this.sendPaymentLinkViaChat(
       jobId,
       job.customer.user_id,
       job.provider_id,
@@ -91,12 +91,13 @@ export class InvoicingService {
       job.customer.user.first_name,
     );
 
-    // 🆕 Send notification to customer about invoice
+    // 🆕 Send notification to customer about invoice (include chat id in title if available)
     await this.sendPaymentNotification(
       job.customer.user_id,
       jobId,
       invoice.hosted_invoice_url,
       amountToSend,
+      chatId,
     );
 
     return {
@@ -178,12 +179,19 @@ export class InvoicingService {
       }
 
       // Send notification to customer
+      // Find related chat for this job (if any) so frontend can open it directly
+      const chat = await tx.chat.findFirst({ where: { job_id: jobId } });
+      const chatId = chat ? chat.id : null;
+
+      // Send notification to customer
       await tx.notifications.create({
         data: {
           recipient_type: 'customer',
           recipient_id: job.customer.user_id,
           type: 'payment',
-          title: 'Payment Confirmed',
+          title: chatId
+            ? `Payment Confirmed [chat:${chatId}]`
+            : 'Payment Confirmed',
           message: `Your payment of $${Number(payment.amount).toFixed(2)} for ${job.service.name} has been received. Thank you!`,
         },
       });
@@ -194,21 +202,26 @@ export class InvoicingService {
           recipient_type: 'service_provider',
           recipient_id: job.service_provider.user_id,
           type: 'payment',
-          title: 'Payment Received',
+          title: chatId
+            ? `Payment Received [chat:${chatId}]`
+            : 'Payment Received',
           message: `Payment of $${Number(payment.amount).toFixed(2)} received for job #${job.id} (${job.service.name})`,
         },
       });
 
       // 🆕 Send chat message to customer confirming payment
-      await tx.messages.create({
-        data: {
-          chat_id: 'chat-id-placeholder', // Will be created separately
-          sender_type: 'service_provider',
-          sender_id: job.provider_id,
-          message_type: 'text',
-          message: `✅ Payment Received!\n\nThank you! Your payment of $${Number(payment.amount).toFixed(2)} has been successfully processed.\n\nInvoice: ${invoice.number}\nDate: ${new Date(invoice.created * 1000).toLocaleDateString()}\n\nWe appreciate your business!`,
-        },
-      });
+      // If chat exists, send chat message confirming payment
+      if (chatId) {
+        await tx.messages.create({
+          data: {
+            chat_id: chatId,
+            sender_type: 'service_provider',
+            sender_id: job.provider_id,
+            message_type: 'text',
+            message: `✅ Payment Received!\n\nThank you! Your payment of $${Number(payment.amount).toFixed(2)} has been successfully processed.\n\nInvoice: ${invoice.number}\nDate: ${new Date(invoice.created * 1000).toLocaleDateString()}\n\nWe appreciate your business!`,
+          },
+        });
+      }
     });
 
     this.logger.log(`Payment success processed for job ${jobId}`);
@@ -226,7 +239,7 @@ export class InvoicingService {
     paymentLink: string,
     amount: number,
     customerName: string,
-  ) {
+  ): Promise<string | null> {
     try {
       this.logger.log(`Sending payment link via chat for job ${jobId}`);
 
@@ -239,7 +252,7 @@ export class InvoicingService {
 
       if (!chat) {
         this.logger.warn(`Chat not found for job ${jobId}, skipping chat message`);
-        return; // Chat doesn't exist yet, skip sending
+        return null; // Chat doesn't exist yet, skip sending
       }
 
       // Create message with payment link in existing chat
@@ -287,11 +300,13 @@ export class InvoicingService {
           // Continue - message is already saved to DB
         }
       }
+      return chat.id;
     } catch (error) {
       this.logger.error(
         `Failed to send payment link via chat: ${error.message}`,
       );
       // Don't throw - invoice is already created, just log the error
+      return null;
     }
   }
 
@@ -303,6 +318,7 @@ export class InvoicingService {
     jobId: number,
     paymentLink: string,
     amount: number,
+    chatId?: string | null,
   ) {
     try {
       this.logger.log(`Sending payment notification to customer ${customerId}`);
@@ -313,7 +329,8 @@ export class InvoicingService {
           recipient_type: 'customer',
           recipient_id: customerId,
           type: 'payment',
-          title: 'Invoice Ready for Payment',
+          // Include chat id in title so frontend can open chat directly when present
+          title: chatId ? `Invoice Ready for Payment [chat:${chatId}]` : 'Invoice Ready for Payment',
           message: `Your invoice for $${amount.toFixed(2)} is ready for payment.`,
         },
       });
@@ -366,13 +383,16 @@ export class InvoicingService {
     });
 
     if (payment) {
-      // Notify customer about failed payment
+      // Notify customer about failed payment (include chat id in title if available)
+      const chat = await this.prisma.chat.findFirst({ where: { job_id: payment.job.id } });
+      const chatId = chat ? chat.id : null;
+
       await this.prisma.notifications.create({
         data: {
           recipient_type: 'customer',
           recipient_id: payment.job.customer.user_id,
           type: 'payment',
-          title: 'Payment Failed',
+          title: chatId ? `Payment Failed [chat:${chatId}]` : 'Payment Failed',
           message: `Payment for ${payment.job.service.name} failed. Please try again or use another payment method.`,
         },
       });

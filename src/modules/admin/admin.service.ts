@@ -1414,6 +1414,241 @@ export class AdminService {
   // ==================== DASHBOARD ====================
 
   /**
+   * Get dashboard core statistics (simplified)
+   */
+  async getDashboardStats() {
+    const [stats, pendingDocs, activeUsers] = await Promise.all([
+      this.prisma.$queryRaw`
+        SELECT 
+          (SELECT COUNT(*) FROM jobs WHERE status IN ('new', 'in_progress')) as active_jobs,
+          (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'received' AND marked_at >= CURRENT_DATE) as revenue_today,
+          (SELECT COUNT(*) FROM service_providers) as total_providers,
+          (SELECT COUNT(*) FROM local_service_managers) as total_lsms
+      `,
+      this.prisma.provider_documents.count({ where: { status: 'pending' } }),
+      this.prisma.users.count({ where: { last_login: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
+    ]);
+
+    const data = stats[0] as any;
+    const pendingApprovals = await this.prisma.service_requests.count({
+      where: { final_status: 'pending', lsm_approved: true, admin_approved: false },
+    });
+
+    return {
+      success: true,
+      data: {
+        activeJobs: Number(data.active_jobs),
+        activeUsers: Math.max(Number(activeUsers), 1),
+        revenueToday: Number(data.revenue_today) || 0,
+        pendingApprovals: pendingApprovals + pendingDocs,
+        totalProviders: Number(data.total_providers),
+        totalLSMs: Number(data.total_lsms),
+      },
+    };
+  }
+
+  /**
+   * Get recent activities feed with type filtering
+   */
+  async getActivities(limit: number = 10, type?: string) {
+    const whereCondition: any = {};
+
+    const activities = [];
+
+    if (!type || type === 'job') {
+      const jobs = await this.prisma.jobs.findMany({
+        take: limit,
+        orderBy: { created_at: 'desc' },
+        include: { service: true, customer: { include: { user: true } } },
+      });
+      activities.push(
+        ...jobs.map((job) => ({
+          id: job.id,
+          type: 'job',
+          message: `New job created - ${job.service.name}`,
+          timestamp: job.created_at,
+          timeAgo: this.getTimeAgo(job.created_at),
+          status: 'success',
+          relatedId: job.id,
+          relatedType: 'job',
+        }))
+      );
+    }
+
+    if (!type || type === 'payment') {
+      const payments = await this.prisma.payments.findMany({
+        take: limit,
+        where: { status: 'received' },
+        orderBy: { marked_at: 'desc' },
+        include: { job: { include: { service: true } } },
+      });
+      activities.push(
+        ...payments
+          .filter((p) => p.marked_at)
+          .map((payment) => ({
+            id: payment.id * 1000,
+            type: 'payment',
+            message: `Payment received - $${Number(payment.amount).toFixed(2)} for Job #${payment.job_id}`,
+            timestamp: payment.marked_at,
+            timeAgo: this.getTimeAgo(payment.marked_at),
+            status: 'success',
+            relatedId: payment.job_id,
+            relatedType: 'job',
+          }))
+      );
+    }
+
+    if (!type || type === 'document') {
+      const docs = await this.prisma.provider_documents.findMany({
+        take: limit,
+        where: { status: 'pending' },
+        orderBy: { created_at: 'desc' },
+        include: { provider: { include: { user: true } } },
+      });
+      activities.push(
+        ...docs.map((doc) => ({
+          id: doc.id * 2000,
+          type: 'document',
+          message: `${doc.provider.business_name || doc.provider.user.first_name} uploaded ${doc.file_name}`,
+          timestamp: doc.created_at,
+          timeAgo: this.getTimeAgo(doc.created_at),
+          status: 'pending',
+          relatedId: doc.provider_id,
+          relatedType: 'provider',
+        }))
+      );
+    }
+
+    // Sort by timestamp descending and return top limit
+    return {
+      success: true,
+      data: activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, limit),
+    };
+  }
+
+  /**
+   * Get pending approvals by type
+   */
+  async getPendingActions() {
+    const [serviceRequests, documents, disputes, providers] = await Promise.all([
+      this.prisma.service_requests.count({
+        where: { final_status: 'pending', lsm_approved: true, admin_approved: false },
+      }),
+      this.prisma.provider_documents.count({ where: { status: 'pending' } }),
+      this.prisma.disputes.count({ where: { status: 'pending' } }),
+      this.prisma.service_providers.count({ where: { status: 'pending' } }),
+    ]);
+
+    return {
+      success: true,
+      data: [
+        {
+          id: 1,
+          type: 'service_request',
+          title: 'Service Requests',
+          description: 'Awaiting admin approval',
+          count: serviceRequests,
+          priority: serviceRequests > 0 ? 'high' : 'low',
+          link: '/admin/service-requests',
+        },
+        {
+          id: 2,
+          type: 'document',
+          title: 'Document Verifications',
+          description: 'Pending provider documents',
+          count: documents,
+          priority: documents > 0 ? 'high' : 'low',
+          link: '/admin/documents',
+        },
+        {
+          id: 3,
+          type: 'dispute',
+          title: 'Disputes',
+          description: 'Customer-provider disputes',
+          count: disputes,
+          priority: disputes > 0 ? 'medium' : 'low',
+          link: '/admin/disputes',
+        },
+        {
+          id: 4,
+          type: 'provider',
+          title: 'Provider Approvals',
+          description: 'New providers pending approval',
+          count: providers,
+          priority: providers > 0 ? 'high' : 'low',
+          link: '/admin/providers?status=pending',
+        },
+      ],
+    };
+  }
+
+  /**
+   * Get revenue data for chart (daily breakdown)
+   */
+  async getRevenue(period: string = '7days') {
+    let daysBack = 7;
+    if (period === '30days') daysBack = 30;
+    if (period === '90days') daysBack = 90;
+    if (period === '1year') daysBack = 365;
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysBack);
+    startDate.setHours(0, 0, 0, 0);
+
+    const revenueData = await this.prisma.$queryRaw`
+      SELECT 
+        DATE(marked_at) as date,
+        COALESCE(SUM(amount), 0) as revenue,
+        COUNT(*) as jobs,
+        COALESCE(SUM(amount) * 0.1, 0) as platform_fee
+      FROM payments
+      WHERE status = 'received' AND marked_at >= ${startDate}
+      GROUP BY DATE(marked_at)
+      ORDER BY date ASC
+    `;
+
+    const data = (revenueData as any[]).map((item) => ({
+      date: item.date ? new Date(item.date).toISOString().split('T')[0] : null,
+      revenue: Number(item.revenue) || 0,
+      jobs: Number(item.jobs) || 0,
+      platformFee: Number(item.platform_fee) || 0,
+    }));
+
+    const totalRevenue = data.reduce((sum, d) => sum + d.revenue, 0);
+    const totalJobs = data.reduce((sum, d) => sum + d.jobs, 0);
+
+    return {
+      success: true,
+      data,
+      summary: {
+        totalRevenue,
+        totalJobs,
+        averageDailyRevenue: totalRevenue / (daysBack || 1),
+        averageJobValue: totalJobs > 0 ? totalRevenue / totalJobs : 0,
+      },
+    };
+  }
+
+  /**
+   * Helper: Get relative time string (e.g., "2m ago")
+   */
+  private getTimeAgo(date: Date): string {
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return date.toLocaleDateString();
+  }
+
+  /**
+   * Get jobs status breakdown for chart visualization
+   */
+  
+
+  /**
    * Get admin dashboard overview with all key statistics
    */
   async getDashboard() {
