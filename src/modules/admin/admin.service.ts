@@ -917,6 +917,7 @@ export class AdminService {
     search?: string;
     region?: string;
     status?: string;
+    totals_jobs?: number;
     minRating?: number;
     maxRating?: number;
     page?: number;
@@ -930,6 +931,7 @@ export class AdminService {
       status,
       minRating,
       maxRating,
+      totals_jobs,
       page = 1,
       limit = 20,
       sortBy = 'created_at',
@@ -1008,7 +1010,6 @@ export class AdminService {
         },
         _count: {
           select: {
-            jobs: true,
             provider_services: { where: { is_active: true } },
             documents: true,
           },
@@ -1035,7 +1036,8 @@ export class AdminService {
         zipcode: provider.zipcode,
         experience: provider.experience,
         tier: provider.tier,
-        totalJobs: provider._count.jobs,
+        totalJobs: provider.total_jobs,
+        completedJobs: 0, // Will be calculated separately if needed
         activeServices: provider._count.provider_services,
         documentsCount: provider._count.documents,
         lsm: {
@@ -1045,6 +1047,7 @@ export class AdminService {
         },
         earnings: Number(provider.earning),
         warnings: provider.warnings,
+        approvedAt: provider.approved_at,
         lastLogin: provider.user.last_login,
         createdAt: provider.created_at,
       })),
@@ -1110,33 +1113,6 @@ export class AdminService {
           },
           orderBy: { created_at: 'desc' },
         },
-        jobs: {
-          select: {
-            id: true,
-            status: true,
-            price: true,
-            created_at: true,
-            completed_at: true,
-            service: {
-              select: {
-                name: true,
-                category: true,
-              },
-            },
-            customer: {
-              select: {
-                user: {
-                  select: {
-                    first_name: true,
-                    last_name: true,
-                  },
-                },
-              },
-            },
-          },
-          orderBy: { created_at: 'desc' },
-          take: 20, // Latest 20 jobs
-        },
         feedbacks: {
           select: {
             id: true,
@@ -1164,23 +1140,36 @@ export class AdminService {
       throw new NotFoundException('Provider not found');
     }
 
-    // Calculate statistics
-    const completedJobs = provider.jobs.filter(
-      (job) => job.status === 'completed',
+    // Fetch ALL jobs for accurate statistics (not limited to 20)
+    const allJobs = await this.prisma.jobs.findMany({
+      where: { provider_id: providerId },
+      select: {
+        id: true,
+        status: true,
+        price: true,
+        created_at: true,
+        completed_at: true,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Calculate statistics using ALL jobs
+    const completedJobsCount = allJobs.filter(
+      (job) => job.status === 'completed' || job.status === 'paid',
     ).length;
-    const cancelledJobs = provider.jobs.filter(
+    const cancelledJobsCount = allJobs.filter(
       (job) => job.status === 'cancelled',
     ).length;
-    const activeJobs = provider.jobs.filter((job) =>
+    const activeJobsCount = allJobs.filter((job) =>
       ['new', 'in_progress'].includes(job.status),
     ).length;
 
-    const totalRevenue = provider.jobs
-      .filter((job) => job.status === 'completed')
+    const totalRevenue = allJobs
+      .filter((job) => job.status === 'completed' || job.status === 'paid')
       .reduce((sum, job) => sum + Number(job.price), 0);
 
     const averageJobValue =
-      completedJobs > 0 ? totalRevenue / completedJobs : 0;
+      completedJobsCount > 0 ? totalRevenue / completedJobsCount : 0;
 
     const averageRating =
       provider.feedbacks.length > 0
@@ -1223,13 +1212,33 @@ export class AdminService {
         region: provider.local_service_manager.region,
       },
       statistics: {
-        totalJobs: provider.jobs.length,
-        completedJobs,
-        cancelledJobs,
-        activeJobs,
-        totalRevenue,
-        averageJobValue,
-        averageRating,
+        totalJobs: provider.total_jobs,
+        completedJobs: allJobs.filter(
+          (job) => job.status === 'completed' || job.status === 'paid',
+        ).length,
+        cancelledJobs: allJobs.filter(
+          (job) => job.status === 'cancelled',
+        ).length,
+        activeJobs: allJobs.filter((job) =>
+          ['new', 'in_progress'].includes(job.status),
+        ).length,
+        totalRevenue: allJobs
+          .filter((job) => job.status === 'completed' || job.status === 'paid')
+          .reduce((sum, job) => sum + Number(job.price), 0),
+        averageJobValue: allJobs.filter(
+          (job) => job.status === 'completed' || job.status === 'paid',
+        ).length > 0
+          ? allJobs
+              .filter((job) => job.status === 'completed' || job.status === 'paid')
+              .reduce((sum, job) => sum + Number(job.price), 0) /
+            allJobs.filter(
+              (job) => job.status === 'completed' || job.status === 'paid',
+            ).length
+          : 0,
+        averageRating: provider.feedbacks.length > 0
+          ? provider.feedbacks.reduce((sum, f) => sum + (f.rating || 0), 0) /
+            provider.feedbacks.length
+          : 0,
         totalReviews: provider.feedbacks.length,
       },
       services: provider.provider_services.map((ps) => ({
@@ -1246,13 +1255,10 @@ export class AdminService {
         verifiedAt: doc.verified_at,
         uploadedAt: doc.created_at,
       })),
-      recentJobs: provider.jobs.map((job) => ({
+      recentJobs: allJobs.slice(0, 20).map((job) => ({
         id: job.id,
         status: job.status,
-        service: job.service.name,
-        category: job.service.category,
         price: Number(job.price),
-        customer: `${job.customer.user.first_name} ${job.customer.user.last_name}`,
         createdAt: job.created_at,
         completedAt: job.completed_at,
       })),
@@ -3482,5 +3488,97 @@ export class AdminService {
         newProviderRating: Number(newRating.toFixed(2)),
       };
     });
+  }
+
+  /**
+   * Get jobs distribution by status and date
+   */
+  async getJobsDistribution(period: string = '7d') {
+    let daysBack = 7;
+    if (period === '30d') daysBack = 30;
+    if (period === '90d') daysBack = 90;
+    if (period === '1y') daysBack = 365;
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysBack);
+    startDate.setHours(0, 0, 0, 0);
+
+    const jobsData = await this.prisma.$queryRaw`
+      SELECT 
+        DATE(created_at) as date,
+        status,
+        COUNT(*) as count
+      FROM jobs
+      WHERE created_at >= ${startDate}
+      GROUP BY DATE(created_at), status
+      ORDER BY date ASC, status
+    `;
+
+    // Process raw data into structured format
+    const dataByDate = new Map<string, any>();
+    const statusTypes = new Set<string>();
+
+    (jobsData as any[]).forEach((item) => {
+      const dateStr = item.date ? new Date(item.date).toISOString().split('T')[0] : null;
+      const status = item.status;
+      const count = Number(item.count) || 0;
+
+      if (!dateStr) return;
+
+      statusTypes.add(status);
+
+      if (!dataByDate.has(dateStr)) {
+        dataByDate.set(dateStr, {
+          date: dateStr,
+          new: 0,
+          in_progress: 0,
+          completed: 0,
+          paid: 0,
+          cancelled: 0,
+          rejected_by_sp: 0,
+          rejected_by_customer: 0,
+          total: 0,
+        });
+      }
+
+      const dayData = dataByDate.get(dateStr);
+      dayData[status] = count;
+      dayData.total += count;
+    });
+
+    // Convert to sorted array
+    const data = Array.from(dataByDate.values()).sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    // Calculate summary statistics
+    const summary = {
+      total: 0,
+      new: 0,
+      in_progress: 0,
+      completed: 0,
+      paid: 0,
+      cancelled: 0,
+      rejected_by_sp: 0,
+      rejected_by_customer: 0,
+    };
+
+    data.forEach((day) => {
+      Object.keys(summary).forEach((key) => {
+        if (key !== 'total') {
+          summary[key] += day[key] || 0;
+        }
+      });
+      summary.total += day.total;
+    });
+
+    return {
+      success: true,
+      period,
+      daysBack,
+      summary,
+      data,
+      statusTypes: Array.from(statusTypes).sort(),
+    };
   }
 }

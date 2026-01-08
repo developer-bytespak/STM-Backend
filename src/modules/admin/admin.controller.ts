@@ -346,6 +346,18 @@ export class AdminController {
   }
 
   /**
+   * Get jobs distribution by status and date
+   */
+  @Get('jobs-distribution')
+  @ApiOperation({ summary: 'Get jobs distribution grouped by status and date' })
+  @ApiResponse({ status: 200, description: 'Jobs distribution data retrieved successfully' })
+  async getJobsDistribution(
+    @Query('period') period?: string,
+  ) {
+    return this.adminService.getJobsDistribution(period || '7d');
+  }
+
+  /**
    * Get admin dashboard overview
    */
   @Get('dashboard')
