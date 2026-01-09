@@ -18,6 +18,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { CurrentUser } from './decorators';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 
 @Controller('auth')
 @ApiTags('authentication')
@@ -126,5 +128,101 @@ export class OAuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateMe(@CurrentUser('id') userId: number, @Body() body: UpdateProfileDto) {
     return this.oauthService.updateProfile(userId, body);
+  }
+
+  /**
+   * Forgot password - Send OTP to email
+   * Step 1 of password reset flow
+   */
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset - sends OTP to email' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP sent successfully',
+    schema: {
+      example: {
+        message: 'OTP sent successfully to your email. Valid for 10 minutes.',
+        email: 'user@example.com',
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.oauthService.forgotPassword(dto.email);
+  }
+
+  /**
+   * Verify OTP for password reset
+   * Step 2 of password reset flow
+   */
+  @Post('verify-password-reset-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify OTP for password reset' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP verified successfully',
+    schema: {
+      example: {
+        message: 'OTP verified successfully. You can now reset your password.',
+        verified: true,
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid OTP' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async verifyPasswordResetOtp(@Body() dto: VerifyOtpDto) {
+    return this.oauthService.verifyPasswordResetOtp(dto.email, dto.otp);
+  }
+
+  /**
+   * Reset password with OTP
+   * Step 3 of password reset flow
+   */
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password with verified OTP' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+    schema: {
+      example: {
+        message: 'Password reset successfully',
+        user: {
+          id: 1,
+          email: 'user@example.com',
+          firstName: 'John',
+          lastName: 'Doe',
+          role: 'customer',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.oauthService.resetPassword(dto.email, dto.otp, dto.newPassword);
+  }
+
+  /**
+   * Resend OTP for password reset
+   * Useful if OTP expires
+   */
+  @Post('resend-password-reset-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend OTP for password reset' })
+  @ApiResponse({
+    status: 200,
+    description: 'New OTP sent successfully',
+    schema: {
+      example: {
+        message: 'New OTP sent to your email',
+        email: 'user@example.com',
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async resendPasswordResetOtp(@Body() dto: ForgotPasswordDto) {
+    return this.oauthService.resendPasswordResetOtp(dto.email);
   }
 }
