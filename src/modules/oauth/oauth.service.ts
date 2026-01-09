@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { UserRole } from '../users/enums/user-role.enum';
+import { OtpService } from './services/otp.service';
 
 @Injectable()
 export class OAuthService {
@@ -18,6 +19,7 @@ export class OAuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly otpService: OtpService,
   ) {}
 
   private mapUserRoleToPrisma(role: UserRole | string): 'customer' | 'service_provider' | 'local_service_manager' | 'admin' {
@@ -801,5 +803,169 @@ export class OAuthService {
     });
 
     return updated;
+  }
+
+  // ============================================
+  // FORGOT PASSWORD & RESET PASSWORD
+  // ============================================
+
+  /**
+   * Initiate forgot password flow - send OTP to email
+   * @param email - User's email address
+   * @returns Success message
+   */
+  async forgotPassword(email: string): Promise<{ message: string; email: string }> {
+    // Check if user exists
+    const user = await this.prisma.users.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User with this email not found');
+    }
+
+    // Send OTP via SendGrid
+    await this.otpService.sendOtpEmail(
+      email,
+      user.first_name,
+      'forgot_password',
+    );
+
+    return {
+      message: 'OTP sent successfully to your email. Valid for 10 minutes.',
+      email,
+    };
+  }
+
+  /**
+   * Verify OTP for password reset
+   * @param email - User's email
+   * @param otp - OTP code from email
+   * @returns Success message
+   */
+  async verifyPasswordResetOtp(
+    email: string,
+    otp: string,
+  ): Promise<{ message: string; verified: boolean }> {
+    // Check if user exists
+    const user = await this.prisma.users.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User with this email not found');
+    }
+
+    // Verify OTP
+    const isValid = await this.otpService.verifyOtp(email, otp);
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    return {
+      message: 'OTP verified successfully. You can now reset your password.',
+      verified: true,
+    };
+  }
+
+  /**
+   * Reset password with OTP verification
+   * @param email - User's email
+   * @param otp - OTP code
+   * @param newPassword - New password
+   * @returns Success message with user data
+   */
+  async resetPassword(
+    email: string,
+    otp: string,
+    newPassword: string,
+  ): Promise<{ message: string; user: any }> {
+    // Check if user exists
+    const user = await this.prisma.users.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+        last_name: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User with this email not found');
+    }
+
+    // Verify OTP first
+    const isValid = await this.otpService.verifyOtp(email, otp);
+    if (!isValid) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    // Hash new password
+    const hashedPassword = await this.hashPassword(newPassword);
+
+    // Update password
+    const updatedUser = await this.prisma.users.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        updated_at: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+        last_name: true,
+        role: true,
+      },
+    });
+
+    // Clear OTP after successful reset
+    this.otpService.clearOtp(email);
+
+    return {
+      message: 'Password reset successfully',
+      user: updatedUser,
+    };
+  }
+
+  /**
+   * Resend OTP for password reset
+   * @param email - User's email
+   * @returns Success message
+   */
+  async resendPasswordResetOtp(email: string): Promise<{ message: string; email: string }> {
+    // Check if user exists
+    const user = await this.prisma.users.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User with this email not found');
+    }
+
+    // Send new OTP
+    await this.otpService.sendOtpEmail(
+      email,
+      user.first_name,
+      'forgot_password',
+    );
+
+    return {
+      message: 'New OTP sent to your email',
+      email,
+    };
   }
 }

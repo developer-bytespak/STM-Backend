@@ -265,6 +265,103 @@ STM Team
   }
 
   /**
+   * Send rescheduled meeting email to provider
+   */
+  private async sendRescheduleMeetingEmailToProvider(
+    providerEmail: string,
+    providerName: string,
+    lsmName: string,
+    title: string,
+    startTime: Date,
+    endTime: Date,
+    timezone: string,
+    joinUrl: string,
+    password: string,
+  ): Promise<void> {
+    try {
+      const startDate = startTime.toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: timezone,
+      });
+
+      const endDate = endTime.toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: timezone,
+      });
+
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #FF6B35;">🔄 Meeting Rescheduled</h2>
+          <p>Hi <strong>${providerName}</strong>,</p>
+          
+          <p>Your meeting <strong>"${title}"</strong> with <strong>${lsmName}</strong> has been <strong>rescheduled</strong>.</p>
+          
+          <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #FF6B35;">
+            <p style="margin: 5px 0;"><strong>📅 New Date & Time:</strong> ${startDate} — ${endDate}</p>
+            <p style="margin: 5px 0;"><strong>⏰ Timezone:</strong> ${timezone}</p>
+            ${password ? `<p style="margin: 5px 0;"><strong>🔐 Passcode:</strong> <code style="background: #e0e0e0; padding: 2px 6px;">${password}</code></p>` : ''}
+          </div>
+
+          <div style="margin: 20px 0;">
+            <a href="${joinUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2D8CFF; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">
+              Join Meeting (Same Link)
+            </a>
+          </div>
+
+          <p style="color: #666; font-size: 13px;">
+            <strong>Note:</strong> The meeting link remains the same. Please update your calendar with the new time.
+          </p>
+
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;" />
+          <p style="color: #666; font-size: 12px;">
+            If you have questions, please contact your service manager.
+          </p>
+          <p style="color: #666; font-size: 12px;">
+            <strong>STM Team</strong>
+          </p>
+        </div>
+      `;
+
+      const plainTextContent = `
+🔄 Meeting Rescheduled
+
+Hi ${providerName},
+
+Your meeting "${title}" with ${lsmName} has been rescheduled.
+
+New Date & Time: ${startDate} — ${endDate}
+Timezone: ${timezone}
+${password ? `Passcode: ${password}` : ''}
+
+Join Link (same as before): ${joinUrl}
+
+Note: The meeting link remains the same. Please update your calendar with the new time.
+
+If you have questions, please contact your service manager.
+
+Best regards,
+STM Team
+      `.trim();
+
+      const message = {
+        to: providerEmail,
+        from: process.env.EMAIL_FROM || 'noreply@stmapp.com',
+        subject: `🔄 Meeting Rescheduled: ${title}`,
+        text: plainTextContent,
+        html: htmlContent,
+      };
+
+      await sgMail.send(message);
+      this.logger.log(`✅ Reschedule email sent to ${providerEmail}`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to send reschedule email to ${providerEmail}`, error);
+      // Don't throw - log but don't block rescheduling
+    }
+  }
+
+  /**
    * Get all meetings for a provider
    */
   async getProviderMeetings(
@@ -452,6 +549,19 @@ STM Team
           message: `Your meeting has been rescheduled to ${newStartTime.toLocaleString()}. Updated meeting link has been sent to your email.`,
         },
       });
+
+      // Send email to provider about rescheduling
+      await this.sendRescheduleMeetingEmailToProvider(
+        updatedMeeting.provider.user.email,
+        updatedMeeting.provider.business_name,
+        `${updatedMeeting.lsm.user.first_name} ${updatedMeeting.lsm.user.last_name}`,
+        updatedMeeting.title,
+        newStartTime,
+        newEndTime,
+        updatedMeeting.timezone,
+        meeting.zoom_join_url, // Use original meeting link (unchanged)
+        meeting.zoom_password || '', // Use original password
+      );
 
       return updatedMeeting;
     } catch (error) {

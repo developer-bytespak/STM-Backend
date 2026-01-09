@@ -268,6 +268,23 @@ export class InvoicingService {
 
       this.logger.log(`✅ Payment link saved to chat for job ${jobId}`);
 
+      // Get provider's actual name
+      const provider = await this.prisma.service_providers.findUnique({
+        where: { id: providerId },
+        include: {
+          user: {
+            select: {
+              first_name: true,
+              last_name: true,
+            },
+          },
+        },
+      });
+
+      const providerName = provider
+        ? `${provider.user.first_name} ${provider.user.last_name}`
+        : 'Service Provider';
+
       // 🆕 Emit real-time message via Socket.IO if ChatGateway is available
       if (this.chatGateway && this.chatGateway.server) {
         try {
@@ -276,7 +293,7 @@ export class InvoicingService {
             chatId: chat.id,
             sender_type: message.sender_type,
             sender_id: message.sender_id,
-            sender_name: `Service Provider`,
+            sender_name: providerName,
             message: message.message,
             message_type: message.message_type,
             paymentLink: paymentLink, // 🆕 Include clickable payment link
