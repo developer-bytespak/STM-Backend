@@ -83,4 +83,11 @@ export class CreateJobDto {
   @IsBoolean()
   @IsOptional()
   fromAI?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Array of image URLs from Vercel Blob (customer uploaded)',
+    example: ['https://blob.vercelusercontent.com/image1.jpg'],
+  })
+  @IsOptional()
+  images?: string[];
 }

@@ -583,6 +583,7 @@ export class CustomersService {
         spAccepted: job.sp_accepted,
         pendingApproval: job.pending_approval,
         location: job.location,
+        images: job.images || [],
         scheduledAt: job.scheduled_at,
         completedAt: job.completed_at,
         createdAt: job.created_at,
