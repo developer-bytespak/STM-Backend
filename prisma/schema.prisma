@@ -149,6 +149,7 @@ model jobs {
   location          String
   answers_json      Json? // Original customer answers
   edited_answers    Json? // SP's negotiated changes
+  images            String[]           @default([]) // Customer uploaded images from Vercel Blob
   sp_accepted       Boolean            @default(false) // SP accepted (before customer closes deal)
   scheduled_at      DateTime?
   completed_at      DateTime?

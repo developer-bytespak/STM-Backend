@@ -114,6 +114,7 @@ export class JobsService {
           status: 'new',
           location: dto.location,
           answers_json: jobAnswers,
+          images: dto.images || [], // Store customer uploaded images
           price: dto.customerBudget || 0, // Save customer's budget as job price
           scheduled_at: dto.preferredDate ? new Date(dto.preferredDate) : null,
           response_deadline: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
@@ -130,7 +131,7 @@ export class JobsService {
         },
       });
 
-      // 4. Create initial message with job details
+      // 4. Create initial message with job details (without image URLs in text)
       const initialMessage = await tx.messages.create({
         data: {
           chat_id: chat.id,
@@ -140,6 +141,22 @@ export class JobsService {
           message: this.formatJobDetailsMessage(service.name, dto),
         },
       });
+
+      // 4b. If images exist, send them as a separate visual message
+      if (dto.images && dto.images.length > 0) {
+        await tx.messages.create({
+          data: {
+            chat_id: chat.id,
+            sender_type: 'customer',
+            sender_id: customerId,
+            message_type: 'image',
+            message: JSON.stringify({
+              images: dto.images,
+              count: dto.images.length
+            }),
+          },
+        });
+      }
 
       // 5. Create notification for provider
       await tx.notifications.create({
@@ -191,6 +208,11 @@ export class JobsService {
     if (dto.requiresInPersonVisit) {
       const visitCost = dto.inPersonVisitCost || 50;
       message += `🏠 In-Person Visit Requested (Additional Cost: $${visitCost})\n`;
+    }
+
+    // Just mention images without URLs (they'll be sent as separate message)
+    if (dto.images && dto.images.length > 0) {
+      message += `\n📷 Customer uploaded ${dto.images.length} image(s) to support this request\n`;
     }
 
     if (dto.answers && Object.keys(dto.answers).length > 0) {
@@ -252,6 +274,7 @@ export class JobsService {
         user: job.service_provider.user,
       },
       location: job.location,
+      images: job.images || [],
       scheduled_at: job.scheduled_at,
       completed_at: job.completed_at,
       created_at: job.created_at,
@@ -435,6 +458,7 @@ export class JobsService {
         phone: job.customer.user.phone_number,
       },
       location: job.location,
+      images: job.images || [],
       answers: job.answers_json,
       scheduled_at: job.scheduled_at,
       response_deadline: job.response_deadline,
@@ -490,6 +514,7 @@ export class JobsService {
         phone: job.customer.user.phone_number,
       },
       location: job.location,
+      images: job.images || [],
       scheduled_at: job.scheduled_at,
       completed_at: job.completed_at,
       created_at: job.created_at,
