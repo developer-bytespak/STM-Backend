@@ -417,7 +417,7 @@ export class ChatGateway
       // Create notifications for all recipients
       for (const recipient of recipientIds) {
         // Encode chat_id in title for frontend to parse
-        await this.prisma.realtimeClient.notifications.create({
+        const notification = await this.prisma.realtimeClient.notifications.create({
           data: {
             recipient_type: recipient.type as any,
             recipient_id: recipient.id,
@@ -426,6 +426,21 @@ export class ChatGateway
             message: message.substring(0, 100),
           },
         });
+
+        // Emit real-time notification via socket
+        this.server.to(`user:${recipient.id}`).emit('notification:created', {
+          notification: {
+            id: notification.id,
+            recipient_type: notification.recipient_type,
+            recipient_id: notification.recipient_id,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            is_read: notification.is_read,
+            created_at: notification.created_at,
+          },
+        });
+        this.logger.log(`Notification emitted to user ${recipient.id}`);
       }
     } catch (error) {
       this.logger.error('Error in send_message:', error.message);

@@ -8,13 +8,17 @@ import { JobActionDto, CustomerJobAction } from './dto/job-action.dto';
 import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
 import { FileDisputeDto } from './dto/file-dispute.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { plainToClass } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 
 @Injectable()
 export class CustomersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationsGateway: NotificationsGateway,
+  ) {}
 
   async create(createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
     try {
@@ -675,7 +679,7 @@ export class CustomersService {
         });
 
         // Notify SP
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'service_provider',
             recipient_id: job.service_provider.user_id,
@@ -684,6 +688,12 @@ export class CustomersService {
             message: `Customer approved your proposed changes for job #${job.id}.`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.service_provider.user_id,
+          notification,
+        );
 
         // Add chat message
         if (job.chats.length > 0) {
