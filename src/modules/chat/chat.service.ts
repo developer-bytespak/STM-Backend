@@ -640,7 +640,7 @@ export class ChatService {
         ? `New Job Request [job:${jobId}]`
         : `New Job Request [chat:${chat.id}]`;
 
-      await tx.notifications.create({
+      const notification = await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
           recipient_id: provider.user_id,
@@ -662,6 +662,20 @@ export class ChatService {
         timestamp: message.created_at,
         type: message.message_type,
       };
+
+      // Emit real-time notification via socket
+      this.chatGateway.server.to(`user:${provider.user_id}`).emit('notification:created', {
+        notification: {
+          id: notification.id,
+          recipient_type: notification.recipient_type,
+          recipient_id: notification.recipient_id,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          is_read: notification.is_read,
+          created_at: notification.created_at,
+        },
+      });
 
       // Emit combined event: notification + chat for dual action (redirect + auto-open)
       this.chatGateway.server.to(`user:${provider.user_id}`).emit('new_job_with_chat', {

@@ -66,20 +66,20 @@ export class NotificationsListResponseDto {
   total: number;
   limit: number;
   offset: number;
-  unread_count: number;
+  unreadCount: number;
 
   constructor(
     notifications: any[],
     total: number,
     limit: number,
     offset: number,
-    unread_count: number,
+    unreadCount: number,
   ) {
     this.notifications = notifications.map(n => new NotificationResponseDto(n));
     this.total = total;
     this.limit = limit;
     this.offset = offset;
-    this.unread_count = unread_count;
+    this.unreadCount = unreadCount;
   }
 }
 
