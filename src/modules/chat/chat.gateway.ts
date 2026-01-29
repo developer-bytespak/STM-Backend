@@ -500,5 +500,113 @@ export class ChatGateway
       this.logger.error('Error in mark_read:', error.message);
     }
   }
+
+  /**
+   * Handle sending negotiation offer via Socket.IO
+   */
+  @SubscribeMessage('send_negotiation_offer')
+  async handleSendNegotiationOffer(
+    @MessageBody()
+    data: {
+      jobId: number;
+      proposed_price?: number;
+      proposed_date?: string;
+      notes?: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userId = client.data.userId;
+
+      if (!data.jobId) {
+        client.emit('error', {
+          message: 'Job ID is required',
+        });
+        return;
+      }
+
+      this.logger.log(`User ${userId} sending negotiation offer for job ${data.jobId}`);
+
+      // Get chat to broadcast
+      const chat = await this.prisma.chat.findFirst({
+        where: { job_id: data.jobId },
+      });
+
+      if (!chat) {
+        client.emit('error', { message: 'Chat not found' });
+        return;
+      }
+
+      // Broadcast to chat room
+      this.server.to(chat.id).emit('negotiation_offer_sent', {
+        job_id: data.jobId,
+        proposed_price: data.proposed_price,
+        proposed_date: data.proposed_date,
+        notes: data.notes,
+        timestamp: new Date(),
+        sender_id: userId,
+      });
+
+      this.logger.log(`Negotiation offer broadcast for job ${data.jobId}`);
+    } catch (error) {
+      this.logger.error('Error sending negotiation offer:', error);
+      client.emit('error', { message: 'Failed to send offer' });
+    }
+  }
+
+  /**
+   * Handle responding to negotiation offer via Socket.IO
+   */
+  @SubscribeMessage('respond_to_negotiation')
+  async handleRespondToNegotiation(
+    @MessageBody()
+    data: {
+      jobId: number;
+      action: 'accept' | 'decline' | 'counter';
+      counter_proposed_price?: number;
+      counter_proposed_date?: string;
+      counter_notes?: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userId = client.data.userId;
+
+      if (!data.jobId || !data.action) {
+        client.emit('error', {
+          message: 'Job ID and action are required',
+        });
+        return;
+      }
+
+      this.logger.log(`User ${userId} responding to negotiation: ${data.action} for job ${data.jobId}`);
+
+      // Get chat to broadcast
+      const chat = await this.prisma.chat.findFirst({
+        where: { job_id: data.jobId },
+      });
+
+      if (!chat) {
+        client.emit('error', { message: 'Chat not found' });
+        return;
+      }
+
+      // Broadcast to chat room
+      this.server.to(chat.id).emit('negotiation_response', {
+        job_id: data.jobId,
+        action: data.action,
+        counter_proposed_price: data.counter_proposed_price,
+        counter_proposed_date: data.counter_proposed_date,
+        counter_notes: data.counter_notes,
+        timestamp: new Date(),
+        sender_id: userId,
+      });
+
+      this.logger.log(`Negotiation response (${data.action}) broadcast for job ${data.jobId}`);
+    } catch (error) {
+      this.logger.error('Error responding to negotiation:', error);
+      client.emit('error', { message: 'Failed to respond' });
+    }
+  }
 }
 

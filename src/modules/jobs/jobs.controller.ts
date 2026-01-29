@@ -130,4 +130,25 @@ export class JobsController {
   ) {
     return this.jobsService.respondToJob(userId, jobId, dto);
   }
+
+  /**
+   * Resend job request to same provider
+   * Extends deadline and notifies provider again
+   */
+  @Post('jobs/:id/resend')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend pending job request to same provider' })
+  @ApiResponse({ status: 200, description: 'Job request resent successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot resend this job' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async resendJobRequest(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+  ) {
+    return this.jobsService.resendJobRequest(userId, jobId);
+  }
 }

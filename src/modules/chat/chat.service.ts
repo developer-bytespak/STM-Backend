@@ -537,10 +537,11 @@ export class ChatService {
         console.error('[AI Chat] Error details:', error);
         console.error('[AI Chat] Stack trace:', error.stack);
         
-        // If it's an unpaid job error, throw it to prevent chat creation
-        if (error.status === 400 && error.message?.includes('unpaid job')) {
-          console.log('[AI Chat] 🚫 BLOCKING: Unpaid job detected - preventing chat creation');
-          throw error; // Re-throw to controller to show payment dialog
+        // If it's a business rule error (400), block chat creation
+        if (error.status === 400) {
+          console.log('[AI Chat] 🚫 BLOCKING: Business rule violation - preventing chat creation');
+          console.log('[AI Chat] Reason:', error.message);
+          throw error; // Re-throw to controller to show appropriate error
         }
         
         console.log('[AI Chat] Will continue with chat creation without job');
@@ -714,6 +715,456 @@ export class ChatService {
           : 'Chat created successfully with AI summary',
       };
     });
+  }
+
+  /**
+   * Send negotiation offer (both provider and customer can use)
+   */
+  async sendNegotiationOffer(
+    userId: number,
+    userRole: string,
+    dto: any,
+  ) {
+    const { job_id, proposed_price, proposed_date, notes } = dto;
+
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: job_id },
+      include: {
+        chats: true,
+        customer: { include: { user: true } },
+        service_provider: { include: { user: true } },
+        service: true,
+      },
+    });
+
+    if (!job) {
+      throw new BadRequestException('Job not found');
+    }
+
+    // Determine sender role
+    let senderRole = 'service_provider';
+    let senderName = '';
+    
+    if (userRole === 'customer') {
+      const customer = await this.prisma.customers.findUnique({
+        where: { user_id: userId },
+      });
+      if (!customer || customer.id !== job.customer_id) {
+        throw new ForbiddenException('Access denied');
+      }
+      senderRole = 'customer';
+      senderName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
+    } else {
+      const provider = await this.prisma.service_providers.findUnique({
+        where: { user_id: userId },
+      });
+      if (!provider || provider.id !== job.provider_id) {
+        throw new ForbiddenException('Access denied');
+      }
+      senderRole = 'service_provider';
+      senderName = provider.business_name || `${job.service_provider.user.first_name} ${job.service_provider.user.last_name}`;
+    }
+
+    const chat = job.chats[0];
+    if (!chat) {
+      throw new BadRequestException('No chat found for this job');
+    }
+
+    // Build offer data
+    const offerData = {
+      offered_by: senderRole,
+      offered_by_name: senderName,
+      offered_at: new Date().toISOString(),
+      original_price: job.price.toNumber(),
+      proposed_price: proposed_price ?? job.price.toNumber(),
+      original_date: job.scheduled_at?.toISOString() || null,
+      proposed_date: proposed_date?.toISOString() || null,
+      notes: notes || '',
+      status: 'pending',
+    };
+
+    // Update job with offer
+    await this.prisma.jobs.update({
+      where: { id: job_id },
+      data: {
+        edited_answers: offerData,
+        pending_approval: true,
+      },
+    });
+
+    // Create formatted message
+    const messageText = this.formatNegotiationOfferMessage(offerData);
+
+    const message = await this.prisma.messages.create({
+      data: {
+        chat_id: chat.id,
+        sender_type: senderRole as any,
+        sender_id: userId,
+        message_type: 'text',
+        message: messageText,
+      },
+    });
+
+    // Broadcast message to both parties via socket
+    const messageData = {
+      id: message.id,
+      chatId: chat.id,
+      jobId: job_id,
+      senderId: userId,
+      senderName: senderName,
+      senderRole: senderRole,
+      content: messageText,
+      timestamp: message.created_at,
+      type: 'text',
+    };
+
+    // Emit only to personal rooms to avoid duplicates
+    if (this.chatGateway?.server) {
+      this.chatGateway.server.to(`user:${job.customer.user_id}`).emit('new_message', messageData);
+      this.chatGateway.server.to(`user:${job.service_provider.user_id}`).emit('new_message', messageData);
+      console.log(`[SOCKET] Offer message emitted to user:${job.customer.user_id} and user:${job.service_provider.user_id}`);
+    } else {
+      console.error('[SOCKET] ChatGateway server not available - message not sent in real-time');
+    }
+
+    return {
+      success: true,
+      message: 'Negotiation offer sent!',
+      offer: offerData,
+    };
+  }
+
+  /**
+   * Respond to negotiation offer (accept, decline, counter)
+   */
+  async respondToNegotiationOffer(
+    userId: number,
+    userRole: string,
+    dto: any,
+  ) {
+    const { job_id, action, counter_proposed_price, counter_proposed_date, counter_notes } = dto;
+
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: job_id },
+      include: {
+        chats: true,
+        customer: { include: { user: true } },
+        service_provider: { include: { user: true } },
+      },
+    });
+
+    if (!job) {
+      throw new BadRequestException('Job not found');
+    }
+
+    // Determine responder role
+    let responderRole = 'service_provider';
+    let responderName = '';
+    
+    if (userRole === 'customer') {
+      const customer = await this.prisma.customers.findUnique({
+        where: { user_id: userId },
+      });
+      if (!customer || customer.id !== job.customer_id) {
+        throw new ForbiddenException('Access denied');
+      }
+      responderRole = 'customer';
+      responderName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
+    } else {
+      const provider = await this.prisma.service_providers.findUnique({
+        where: { user_id: userId },
+      });
+      if (!provider || provider.id !== job.provider_id) {
+        throw new ForbiddenException('Access denied');
+      }
+      responderRole = 'service_provider';
+      responderName = job.service_provider.business_name || `${job.service_provider.user.first_name} ${job.service_provider.user.last_name}`;
+    }
+
+    const chat = job.chats[0];
+    if (!chat) {
+      throw new BadRequestException('No chat found for this job');
+    }
+
+    const currentOffer = job.edited_answers as any;
+    if (!currentOffer || currentOffer.status !== 'pending') {
+      throw new BadRequestException('No pending offer to respond to');
+    }
+
+    // Store user IDs before transaction for socket emission
+    const customerUserId = job.customer.user_id;
+    const providerUserId = job.service_provider.user_id;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (action === 'accept') {
+        // BOTH CAN ACCEPT - Update job price immediately
+        const finalPrice = currentOffer.proposed_price || currentOffer.original_price;
+        const finalDate = currentOffer.proposed_date ? new Date(currentOffer.proposed_date) : job.scheduled_at;
+
+        const finalOffer = {
+          ...currentOffer,
+          status: 'accepted',
+          accepted_by: responderRole,
+          accepted_by_name: responderName,
+          accepted_at: new Date().toISOString(),
+        };
+
+        // Update job with final negotiated terms
+        await tx.jobs.update({
+          where: { id: job_id },
+          data: {
+            edited_answers: finalOffer,
+            pending_approval: false,
+            sp_accepted: true,
+            price: finalPrice,
+            scheduled_at: finalDate,
+          },
+        });
+
+        const messageText = `🎉 DEAL CONFIRMED!\n\n✅ ${responderName} accepted the offer\n\n📝 Final Terms:\n💰 Price: $${finalPrice}\n📅 Date: ${finalDate ? finalDate.toLocaleDateString() : 'Not specified'}`;
+
+        const message = await tx.messages.create({
+          data: {
+            chat_id: chat.id,
+            sender_type: responderRole as any,
+            sender_id: userId,
+            message_type: 'text',
+            message: messageText,
+          },
+        });
+
+        const messageData = {
+          id: message.id,
+          chatId: chat.id,
+          jobId: job_id,
+          senderId: userId,
+          senderName: responderName,
+          senderRole: responderRole,
+          content: messageText,
+          timestamp: message.created_at,
+          type: 'text',
+        };
+
+        return { success: true, message: 'Offer accepted! Deal confirmed.', action: 'accepted', messageData };
+      }
+
+      if (action === 'decline') {
+        const declinedOffer = {
+          ...currentOffer,
+          status: 'declined',
+          declined_by: responderRole,
+          declined_by_name: responderName,
+          declined_at: new Date().toISOString(),
+        };
+
+        await tx.jobs.update({
+          where: { id: job_id },
+          data: { 
+            edited_answers: declinedOffer,
+            pending_approval: false,
+          },
+        });
+
+        const messageText = `❌ Offer Declined\n\n${responderName} declined the offer. You can continue negotiating with a new offer.`;
+
+        const message = await tx.messages.create({
+          data: {
+            chat_id: chat.id,
+            sender_type: responderRole as any,
+            sender_id: userId,
+            message_type: 'text',
+            message: messageText,
+          },
+        });
+
+        const messageData = {
+          id: message.id,
+          chatId: chat.id,
+          jobId: job_id,
+          senderId: userId,
+          senderName: responderName,
+          senderRole: responderRole,
+          content: messageText,
+          timestamp: message.created_at,
+          type: 'text',
+        };
+
+        return { success: true, message: 'Offer declined.', action: 'declined', messageData };
+      }
+
+      if (action === 'counter') {
+        if (!counter_proposed_price && !counter_proposed_date) {
+          throw new BadRequestException('Please provide at least a price or date for counter offer');
+        }
+
+        const counterOffer = {
+          offered_by: responderRole,
+          offered_by_name: responderName,
+          counter_to_offer: currentOffer.offered_by,
+          offered_at: new Date().toISOString(),
+          original_price: currentOffer.proposed_price || currentOffer.original_price,
+          proposed_price: counter_proposed_price ?? (currentOffer.proposed_price || currentOffer.original_price),
+          original_date: currentOffer.proposed_date || currentOffer.original_date,
+          proposed_date: counter_proposed_date?.toISOString() || currentOffer.proposed_date || currentOffer.original_date,
+          notes: counter_notes || '',
+          status: 'pending',
+        };
+
+        await tx.jobs.update({
+          where: { id: job_id },
+          data: { 
+            edited_answers: counterOffer,
+            pending_approval: true,
+          },
+        });
+
+        const messageText = this.formatCounterOfferMessage(counterOffer);
+
+        const message = await tx.messages.create({
+          data: {
+            chat_id: chat.id,
+            sender_type: responderRole as any,
+            sender_id: userId,
+            message_type: 'text',
+            message: messageText,
+          },
+        });
+
+        const messageData = {
+          id: message.id,
+          chatId: chat.id,
+          jobId: job_id,
+          senderId: userId,
+          senderName: responderName,
+          senderRole: responderRole,
+          content: messageText,
+          timestamp: message.created_at,
+          type: 'text',
+        };
+
+        return { success: true, message: 'Counter offer sent!', action: 'countered', messageData };
+      }
+    });
+
+    // Emit socket AFTER transaction commits successfully
+    if (result.messageData) {
+      // Only emit to personal rooms, not chat room to avoid duplicates
+      if (this.chatGateway?.server) {
+        this.chatGateway.server.to(`user:${customerUserId}`).emit('new_message', result.messageData);
+        this.chatGateway.server.to(`user:${providerUserId}`).emit('new_message', result.messageData);
+        console.log(`[SOCKET] Negotiation response emitted to user:${customerUserId} and user:${providerUserId}`);
+      } else {
+        console.error('[SOCKET] ChatGateway server not available - negotiation response not sent in real-time');
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Get negotiation history for a job
+   */
+  async getNegotiationHistory(jobId: number, userId: number) {
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: jobId },
+    });
+
+    if (!job) {
+      throw new BadRequestException('Job not found');
+    }
+
+    // Verify access
+    const customer = await this.prisma.customers.findUnique({
+      where: { user_id: userId },
+    });
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    const userIsCustomer = customer && job.customer_id === customer.id;
+    const userIsProvider = provider && job.provider_id === provider.id;
+
+    if (!userIsCustomer && !userIsProvider) {
+      throw new ForbiddenException('You do not have access to this job');
+    }
+
+    return {
+      job_id: jobId,
+      current_status: job.pending_approval ? 'awaiting_response' : 'no_active_negotiation',
+      current_offer: job.edited_answers,
+      original_price: job.price.toNumber(),
+      original_date: job.scheduled_at,
+    };
+  }
+
+  /**
+   * Format negotiation offer message
+   */
+  private formatNegotiationOfferMessage(offerData: any): string {
+    const lines: string[] = [];
+    lines.push(`💡 NEW OFFER from ${offerData.offered_by_name || (offerData.offered_by === 'customer' ? 'Customer' : 'Provider')}`);
+    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    lines.push('');
+
+    const priceChange = offerData.proposed_price !== offerData.original_price
+      ? `$${offerData.original_price} → $${offerData.proposed_price}`
+      : `$${offerData.proposed_price}`;
+
+    lines.push(`💰 Price: ${priceChange}`);
+
+    if (offerData.original_date && offerData.proposed_date) {
+      const oldDate = new Date(offerData.original_date).toLocaleDateString();
+      const newDate = new Date(offerData.proposed_date).toLocaleDateString();
+      lines.push(`📅 Date: ${oldDate} → ${newDate}`);
+    } else if (offerData.proposed_date) {
+      const newDate = new Date(offerData.proposed_date).toLocaleDateString();
+      lines.push(`📅 Date: ${newDate}`);
+    }
+
+    if (offerData.notes) {
+      lines.push('');
+      lines.push(`📝 Notes: ${offerData.notes}`);
+    }
+
+    lines.push('');
+    lines.push('⏳ Awaiting response...');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Format counter offer message
+   */
+  private formatCounterOfferMessage(counterOffer: any): string {
+    const lines: string[] = [];
+    lines.push(`↩️ COUNTER OFFER from ${counterOffer.offered_by_name || (counterOffer.offered_by === 'customer' ? 'Customer' : 'Provider')}`);
+    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    lines.push('');
+
+    const priceChange = counterOffer.proposed_price !== counterOffer.original_price
+      ? `$${counterOffer.original_price} → $${counterOffer.proposed_price}`
+      : `$${counterOffer.proposed_price}`;
+
+    lines.push(`💰 Price: ${priceChange}`);
+
+    if (counterOffer.original_date && counterOffer.proposed_date) {
+      const oldDate = new Date(counterOffer.original_date).toLocaleDateString();
+      const newDate = new Date(counterOffer.proposed_date).toLocaleDateString();
+      lines.push(`📅 Date: ${oldDate} → ${newDate}`);
+    } else if (counterOffer.proposed_date) {
+      const newDate = new Date(counterOffer.proposed_date).toLocaleDateString();
+      lines.push(`📅 Date: ${newDate}`);
+    }
+
+    if (counterOffer.notes) {
+      lines.push('');
+      lines.push(`📝 Notes: ${counterOffer.notes}`);
+    }
+
+    lines.push('');
+    lines.push('⏳ Awaiting response...');
+
+    return lines.join('\n');
   }
 
   // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
