@@ -9,6 +9,7 @@ import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
 import { FileDisputeDto } from './dto/file-dispute.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { EmailService } from '../shared/services/email.service';
 import { plainToClass } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
@@ -18,6 +19,7 @@ export class CustomersService {
   constructor(
     private prisma: PrismaService,
     private notificationsGateway: NotificationsGateway,
+    private emailService: EmailService,
   ) {}
 
   async create(createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
@@ -635,7 +637,26 @@ export class CustomersService {
       include: {
         service: true,
         service_provider: {
-          include: { user: true },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
+              },
+            },
+          },
+        },
+        customer: {
+          include: {
+            user: {
+              select: {
+                first_name: true,
+                last_name: true,
+              },
+            },
+          },
         },
         chats: true,
         payment: true,
@@ -732,7 +753,7 @@ export class CustomersService {
           });
         }
 
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'service_provider',
             recipient_id: job.service_provider.user_id,
@@ -741,6 +762,31 @@ export class CustomersService {
             message: `Customer closed the deal for job #${job.id}. You can now start the work.`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.service_provider.user_id,
+          notification,
+        );
+
+        // Send email notification to provider (non-blocking)
+        if (job.service_provider.user?.email) {
+          const providerName = job.service_provider.business_name || `${job.service_provider.user.first_name} ${job.service_provider.user.last_name}`;
+          const customerName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
+          this.emailService.sendDealClosedEmailToProvider(
+            job.service_provider.user.email,
+            providerName,
+            {
+              jobId: job.id,
+              serviceName: job.service.name,
+              customerName: customerName,
+              location: job.location,
+              price: Number(job.price),
+            },
+          ).catch((error) => {
+            console.error('Failed to send deal closed email:', error);
+          });
+        }
 
         return { message: 'Deal closed successfully. Job is now in progress.' };
       });
@@ -781,7 +827,7 @@ export class CustomersService {
           });
         }
 
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'service_provider',
             recipient_id: job.service_provider.user_id,
@@ -790,6 +836,12 @@ export class CustomersService {
             message: `Customer cancelled job #${job.id}. Reason: ${dto.cancellationReason}${cancellationResult.fee > 0 ? `. Cancellation fee: $${cancellationResult.fee}` : ''}`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.service_provider.user_id,
+          notification,
+        );
 
         return {
           message: cancellationResult.message,
@@ -866,7 +918,7 @@ export class CustomersService {
       });
 
       // Notify provider
-      await tx.notifications.create({
+      const notification = await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
           recipient_id: job.service_provider.user_id,
@@ -875,6 +927,12 @@ export class CustomersService {
           message: `You received a ${dto.rating}-star review for job #${job.id}.`,
         },
       });
+
+      // Emit real-time notification via socket
+      await this.notificationsGateway.emitNotificationToUser(
+        job.service_provider.user_id,
+        notification,
+      );
 
       return { message: 'Feedback submitted successfully' };
     });

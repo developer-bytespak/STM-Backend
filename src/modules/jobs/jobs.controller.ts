@@ -98,17 +98,10 @@ export class JobsController {
   }
 
   /**
-   * Get all active jobs for provider
+   * NOTE: GET provider/jobs is handled by ProvidersController (GET /provider/jobs) with
+   * pagination and status filter. Do not add a duplicate route here - it would conflict
+   * and return only in_progress/completed (no 'new' requests), breaking the provider jobs page.
    */
-  @Get('provider/jobs')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.PROVIDER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all active jobs for current provider' })
-  @ApiResponse({ status: 200, description: 'Jobs retrieved successfully' })
-  async getProviderJobs(@CurrentUser('id') userId: number) {
-    return this.jobsService.getProviderJobs(userId);
-  }
 
   /**
    * Respond to a job (accept or reject)

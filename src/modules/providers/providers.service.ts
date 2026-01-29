@@ -11,10 +11,14 @@ import { AddServiceDto } from './dto/add-service.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetAvailabilityDto } from './dto/set-availability.dto';
 import { UpdateJobStatusDto, JobStatusAction } from './dto/update-job-status.dto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class ProvidersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsGateway: NotificationsGateway,
+  ) {}
 
   /**
    * Request a new service
@@ -75,7 +79,7 @@ export class ProvidersService {
     });
 
     // Notify LSM
-    await this.prisma.notifications.create({
+    const notification = await this.prisma.notifications.create({
       data: {
         recipient_type: 'local_service_manager',
         recipient_id: provider.local_service_manager.user_id,
@@ -84,6 +88,12 @@ export class ProvidersService {
         message: `${provider.business_name || 'A service provider'} has requested to add "${dto.serviceName}" service`,
       },
     });
+
+    // Emit real-time notification via socket
+    await this.notificationsGateway.emitNotificationToUser(
+      provider.local_service_manager.user_id,
+      notification,
+    );
 
     return {
       id: serviceRequest.id,
@@ -560,7 +570,7 @@ export class ProvidersService {
       });
 
       // Create notification for the provider
-      await tx.notifications.create({
+      const notification = await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
           recipient_id: provider.user_id,
@@ -569,6 +579,12 @@ export class ProvidersService {
           message: `You have ${dto.status === 'active' ? 'activated' : 'deactivated'} your account. You are now ${dto.status === 'active' ? 'available' : 'unavailable'} for new job requests.`,
         },
       });
+
+      // Emit real-time notification via socket
+      await this.notificationsGateway.emitNotificationToUser(
+        provider.user_id,
+        notification,
+      );
     });
 
     return {
@@ -732,7 +748,7 @@ export class ProvidersService {
         }
 
         // Notify customer
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'customer',
             recipient_id: job.customer.user_id,
@@ -741,6 +757,12 @@ export class ProvidersService {
             message: `Your ${job.service.name} job has been marked complete. Please make payment.`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user_id,
+          notification,
+        );
 
         return {
           jobId: updatedJob.id,
@@ -803,7 +825,7 @@ export class ProvidersService {
         });
 
         // Notify customer
-        await tx.notifications.create({
+        const customerNotification = await tx.notifications.create({
           data: {
             recipient_type: 'customer',
             recipient_id: job.customer.user_id,
@@ -813,8 +835,14 @@ export class ProvidersService {
           },
         });
 
+        // Emit real-time notification to customer via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user_id,
+          customerNotification,
+        );
+
         // Notify provider
-        await tx.notifications.create({
+        const providerNotification = await tx.notifications.create({
           data: {
             recipient_type: 'service_provider',
             recipient_id: provider.user_id,
@@ -823,6 +851,12 @@ export class ProvidersService {
             message: `Payment of $${Number(job.price).toFixed(2)} recorded for job #${job.id}.`,
           },
         });
+
+        // Emit real-time notification to provider via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          provider.user_id,
+          providerNotification,
+        );
 
         return {
           jobId: job.id,
@@ -851,9 +885,13 @@ export class ProvidersService {
       limit?: number;
     },
   ) {
+    console.log('🔍 getJobs called with userId:', userId, 'filters:', filters);
+    
     const provider = await this.prisma.service_providers.findUnique({
       where: { user_id: userId },
     });
+
+    console.log('🔍 Found provider:', provider ? { id: provider.id, user_id: provider.user_id, status: provider.status } : 'NOT FOUND');
 
     if (!provider) {
       throw new NotFoundException('Service provider profile not found');
@@ -871,6 +909,8 @@ export class ProvidersService {
       const statuses = status.split(',');
       where.status = { in: statuses };
     }
+
+    console.log('🔍 Query where clause:', JSON.stringify(where));
 
     // Date range filter
     if (fromDate || toDate) {
@@ -925,7 +965,7 @@ export class ProvidersService {
       take: finalLimit,
     });
 
-    return {
+    const response = {
       data: jobs.map((job) => ({
         id: job.id,
         service: job.service.name,
@@ -950,6 +990,15 @@ export class ProvidersService {
         totalPages: Math.ceil(total / finalLimit),
       },
     };
+
+    console.log('🔧 Provider getJobs Response:', JSON.stringify({
+      dataLength: response.data.length,
+      total: response.pagination.total,
+      status,
+      providerId: provider.id
+    }));
+
+    return response;
   }
 
   // ==================== REVIEW MANAGEMENT ====================

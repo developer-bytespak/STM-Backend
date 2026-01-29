@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { StripeService } from './stripe.service';
 import { ChatGateway } from '../../chat/chat.gateway';
+import { NotificationsGateway } from '../../notifications/notifications.gateway';
 
 @Injectable()
 export class InvoicingService {
@@ -12,6 +13,8 @@ export class InvoicingService {
     private readonly stripeService: StripeService,
     @Optional()
     private readonly chatGateway?: ChatGateway,
+    @Optional()
+    private readonly notificationsGateway?: NotificationsGateway,
   ) {}
 
   /**
@@ -184,7 +187,7 @@ export class InvoicingService {
       const chatId = chat ? chat.id : null;
 
       // Send notification to customer
-      await tx.notifications.create({
+      const customerNotification = await tx.notifications.create({
         data: {
           recipient_type: 'customer',
           recipient_id: job.customer.user_id,
@@ -196,8 +199,16 @@ export class InvoicingService {
         },
       });
 
+      // Emit real-time notification to customer via socket
+      if (this.notificationsGateway) {
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user_id,
+          customerNotification,
+        );
+      }
+
       // Send notification to provider
-      await tx.notifications.create({
+      const providerNotification = await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
           recipient_id: job.service_provider.user_id,
@@ -208,6 +219,14 @@ export class InvoicingService {
           message: `Payment of $${Number(payment.amount).toFixed(2)} received for job #${job.id} (${job.service.name})`,
         },
       });
+
+      // Emit real-time notification to provider via socket
+      if (this.notificationsGateway) {
+        await this.notificationsGateway.emitNotificationToUser(
+          job.service_provider.user_id,
+          providerNotification,
+        );
+      }
 
       // 🆕 Send chat message to customer confirming payment
       // If chat exists, send chat message confirming payment
@@ -341,7 +360,7 @@ export class InvoicingService {
       this.logger.log(`Sending payment notification to customer ${customerId}`);
 
       // Create notification
-      await this.prisma.notifications.create({
+      const notification = await this.prisma.notifications.create({
         data: {
           recipient_type: 'customer',
           recipient_id: customerId,
@@ -351,6 +370,14 @@ export class InvoicingService {
           message: `Your invoice for $${amount.toFixed(2)} is ready for payment.`,
         },
       });
+
+      // Emit real-time notification via socket
+      if (this.notificationsGateway) {
+        await this.notificationsGateway.emitNotificationToUser(
+          customerId,
+          notification,
+        );
+      }
 
       this.logger.log(`✅ Payment notification created for customer ${customerId}`);
     } catch (error) {
@@ -404,7 +431,7 @@ export class InvoicingService {
       const chat = await this.prisma.chat.findFirst({ where: { job_id: payment.job.id } });
       const chatId = chat ? chat.id : null;
 
-      await this.prisma.notifications.create({
+      const notification = await this.prisma.notifications.create({
         data: {
           recipient_type: 'customer',
           recipient_id: payment.job.customer.user_id,
@@ -413,6 +440,14 @@ export class InvoicingService {
           message: `Payment for ${payment.job.service.name} failed. Please try again or use another payment method.`,
         },
       });
+
+      // Emit real-time notification via socket
+      if (this.notificationsGateway) {
+        await this.notificationsGateway.emitNotificationToUser(
+          payment.job.customer.user_id,
+          notification,
+        );
+      }
     }
 
     this.logger.log(`Payment failure processed for payment ${paymentId}`);

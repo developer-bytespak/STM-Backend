@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import { NotificationsGateway } from '../../notifications/notifications.gateway';
 
 @Injectable()
 export class JobTimeoutService {
   private readonly logger = new Logger(JobTimeoutService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsGateway: NotificationsGateway,
+  ) {}
 
   /**
    * Smart timeout checker - runs every 15 minutes
@@ -91,7 +95,7 @@ export class JobTimeoutService {
         });
 
         // 3. Notify customer
-        await tx.notifications.create({
+        const customerNotification = await tx.notifications.create({
           data: {
             recipient_type: 'customer',
             recipient_id: job.customer.user.id,
@@ -101,13 +105,19 @@ export class JobTimeoutService {
           },
         });
 
+        // Emit real-time notification to customer via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user.id,
+          customerNotification,
+        );
+
         // 4. Notify SP about warning
         const warningMessage =
           newWarnings >= 3
             ? `You missed responding to job #${job.id}. Warning ${newWarnings}/3 - Your account will be reviewed by LSM.`
             : `You missed responding to job #${job.id}. Warning ${newWarnings}/3`;
 
-        await tx.notifications.create({
+        const spNotification = await tx.notifications.create({
           data: {
             recipient_type: 'service_provider',
             recipient_id: job.service_provider.user.id,
@@ -117,9 +127,15 @@ export class JobTimeoutService {
           },
         });
 
+        // Emit real-time notification to service provider via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.service_provider.user.id,
+          spNotification,
+        );
+
         // 5. If 3+ warnings, notify LSM for review
         if (newWarnings >= 3) {
-          await tx.notifications.create({
+          const lsmNotification = await tx.notifications.create({
             data: {
               recipient_type: 'local_service_manager',
               recipient_id: job.service_provider.lsm_id,
@@ -128,6 +144,12 @@ export class JobTimeoutService {
               message: `Service provider ${job.service_provider.business_name || job.service_provider.user.first_name} has reached ${newWarnings} warnings. Manual review required.`,
             },
           });
+
+          // Emit real-time notification to LSM via socket
+          await this.notificationsGateway.emitNotificationToUser(
+            job.service_provider.lsm_id,
+            lsmNotification,
+          );
         }
 
         this.logger.log(
