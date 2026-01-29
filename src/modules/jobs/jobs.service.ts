@@ -6,10 +6,16 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateJobDto, ReassignJobDto, RespondJobDto, JobResponseAction } from './dto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { EmailService } from '../shared/services/email.service';
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsGateway: NotificationsGateway,
+    private readonly emailService: EmailService,
+  ) {}
 
   /**
    * Create a new job with chat and initial message
@@ -18,6 +24,15 @@ export class JobsService {
     // Verify customer exists
     const customer = await this.prisma.customers.findUnique({
       where: { user_id: customerId },
+      include: {
+        user: {
+          select: {
+            email: true,
+            first_name: true,
+            last_name: true,
+          },
+        },
+      },
     });
 
     if (!customer) {
@@ -40,6 +55,13 @@ export class JobsService {
         service_areas: true,
         provider_services: {
           where: { service_id: dto.serviceId },
+        },
+        user: {
+          select: {
+            email: true,
+            first_name: true,
+            last_name: true,
+          },
         },
       },
     });
@@ -159,7 +181,7 @@ export class JobsService {
       }
 
       // 5. Create notification for provider
-      await tx.notifications.create({
+      const notification = await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
           recipient_id: provider.user_id,
@@ -168,6 +190,33 @@ export class JobsService {
           message: `You have a new ${service.name} request from a customer`,
         },
       });
+
+      // Emit real-time notification via socket
+      await this.notificationsGateway.emitNotificationToUser(
+        provider.user_id,
+        notification,
+      );
+
+      // Send email notification to provider (non-blocking)
+      if (provider.user?.email) {
+        const providerName = provider.business_name || `${provider.user.first_name} ${provider.user.last_name}`;
+        const customerName = `${customer.user.first_name} ${customer.user.last_name}`;
+        this.emailService.sendJobRequestEmailToProvider(
+          provider.user.email,
+          providerName,
+          {
+            jobId: job.id,
+            serviceName: service.name,
+            customerName: customerName,
+            location: dto.location,
+            price: dto.customerBudget,
+            scheduledAt: dto.preferredDate,
+          },
+        ).catch((error) => {
+          // Log error but don't fail the job creation
+          console.error('Failed to send job request email:', error);
+        });
+      }
 
       return {
         job: {
@@ -391,7 +440,7 @@ export class JobsService {
       });
 
       // 6. Notify new provider
-      await tx.notifications.create({
+      const notification = await tx.notifications.create({
         data: {
           recipient_type: 'service_provider',
           recipient_id: newProvider.user_id,
@@ -400,6 +449,12 @@ export class JobsService {
           message: `You have a new ${job.service.name} request from a customer`,
         },
       });
+
+      // Emit real-time notification via socket
+      await this.notificationsGateway.emitNotificationToUser(
+        newProvider.user_id,
+        notification,
+      );
 
       return {
         jobId: updatedJob.id,
@@ -527,6 +582,15 @@ export class JobsService {
   async respondToJob(userId: number, jobId: number, dto: RespondJobDto) {
     const provider = await this.prisma.service_providers.findUnique({
       where: { user_id: userId },
+      include: {
+        user: {
+          select: {
+            email: true,
+            first_name: true,
+            last_name: true,
+          },
+        },
+      },
     });
 
     if (!provider) {
@@ -543,7 +607,9 @@ export class JobsService {
             user: {
               select: {
                 id: true,
+                email: true,
                 first_name: true,
+                last_name: true,
               },
             },
           },
@@ -584,7 +650,7 @@ export class JobsService {
         });
 
         // Notify customer
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'customer',
             recipient_id: job.customer.user.id,
@@ -593,6 +659,12 @@ export class JobsService {
             message: `Your ${job.service.name} request has been accepted. You can now close the deal to start the job.`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user.id,
+          notification,
+        );
 
         // Add system message to chat
         if (job.chats.length > 0) {
@@ -604,6 +676,24 @@ export class JobsService {
               message_type: 'text',
               message: '✅ I have accepted your request. Please review and close the deal to proceed!',
             },
+          });
+        }
+
+        // Send email notification to customer (non-blocking)
+        if (job.customer.user?.email) {
+          const customerName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
+          const providerName = provider.business_name || `${provider.user.first_name} ${provider.user.last_name}`;
+          this.emailService.sendJobAcceptedEmailToCustomer(
+            job.customer.user.email,
+            customerName,
+            {
+              jobId: job.id,
+              serviceName: job.service.name,
+              providerName: providerName,
+              price: Number(job.price),
+            },
+          ).catch((error) => {
+            console.error('Failed to send job accepted email:', error);
           });
         }
 
@@ -642,7 +732,7 @@ export class JobsService {
         });
 
         // Notify customer
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'customer',
             recipient_id: job.customer.user.id,
@@ -651,6 +741,12 @@ export class JobsService {
             message: `${provider.business_name || 'Service provider'} proposed changes to your ${job.service.name} request. Please review.`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user.id,
+          notification,
+        );
 
         // Add message to chat showing proposed changes
         if (job.chats.length > 0) {
@@ -677,6 +773,27 @@ export class JobsService {
               message_type: 'text',
               message: changesMessage,
             },
+          });
+        }
+
+        // Send email notification to customer (non-blocking)
+        if (job.customer.user?.email) {
+          const customerName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
+          const providerName = provider.business_name || `${provider.user.first_name} ${provider.user.last_name}`;
+          this.emailService.sendJobNegotiationEmailToCustomer(
+            job.customer.user.email,
+            customerName,
+            {
+              jobId: job.id,
+              serviceName: job.service.name,
+              providerName: providerName,
+              negotiationNotes: negotiation.notes,
+              editedPrice: negotiation.editedPrice,
+              editedSchedule: negotiation.editedSchedule,
+              originalPrice: Number(job.price),
+            },
+          ).catch((error) => {
+            console.error('Failed to send job negotiation email:', error);
           });
         }
 
@@ -708,7 +825,7 @@ export class JobsService {
         }
 
         // Notify customer
-        await tx.notifications.create({
+        const notification = await tx.notifications.create({
           data: {
             recipient_type: 'customer',
             recipient_id: job.customer.user.id,
@@ -717,6 +834,12 @@ export class JobsService {
             message: `Your ${job.service.name} request was declined. Reason: ${dto.reason}`,
           },
         });
+
+        // Emit real-time notification via socket
+        await this.notificationsGateway.emitNotificationToUser(
+          job.customer.user.id,
+          notification,
+        );
 
         return {
           jobId: updatedJob.id,
