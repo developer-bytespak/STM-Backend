@@ -616,6 +616,8 @@ export class CustomersService {
         canCloseDeal: job.status === 'new' && job.sp_accepted === true,
         canCancel: ['new', 'in_progress'].includes(job.status),
         canGiveFeedback: job.status === 'paid' && job.feedbacks.length === 0, // Only if no feedback submitted yet
+        canResend: job.status === 'new' && !job.sp_accepted, // Can resend if pending
+        isExpired: job.response_deadline && new Date() > job.response_deadline, // Check if deadline passed
       },
     };
   }

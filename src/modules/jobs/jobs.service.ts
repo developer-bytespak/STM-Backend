@@ -91,12 +91,15 @@ export class JobsService {
       throw new ForbiddenException('Your account is suspended. Contact support.');
     }
 
-    // Check if customer has unpaid jobs with DIFFERENT providers
-    // Allow creating jobs with the same provider (for payment/continuation)
-    const unpaidJob = await this.prisma.jobs.findFirst({
+    // ========== NEW JOB BLOCKING LOGIC ==========
+    // RULE 1: Completed but NOT paid → Block ALL
+    // RULE 2: In progress with SAME SP → Block, allow DIFFERENT SP
+    // RULE 3: New with SAME SP (SP not responded) → Block, allow DIFFERENT SP
+    // RULE 4: New with SP ACCEPTED → Block ALL
+    
+    const existingJobs = await this.prisma.jobs.findMany({
       where: {
         customer_id: customer.id,
-        provider_id: { not: dto.providerId }, // Only block if different provider
         status: { in: ['new', 'in_progress', 'completed'] },
       },
       include: {
@@ -106,14 +109,51 @@ export class JobsService {
             user: { select: { first_name: true, last_name: true } },
           },
         },
+        payment: { select: { status: true } },
       },
     });
 
-    if (unpaidJob) {
-      const providerName = `${unpaidJob.service_provider.user.first_name} ${unpaidJob.service_provider.user.last_name}`;
-      throw new BadRequestException(
-        `You have an unpaid job (#${unpaidJob.id} - ${unpaidJob.service.name}) with ${providerName}. Please complete payment before booking with another provider.`,
-      );
+    // Check each existing job for blocking
+    for (const existingJob of existingJobs) {
+      const providerName = `${existingJob.service_provider.user.first_name} ${existingJob.service_provider.user.last_name}`;
+      const isSameProvider = existingJob.provider_id === dto.providerId;
+
+      // RULE 1: COMPLETED but NOT PAID → Block everything
+      if (existingJob.status === 'completed' && existingJob.payment?.status !== 'received') {
+        throw new BadRequestException(
+          `You have an unpaid job (#${existingJob.id}) with ${providerName}. Complete payment before creating new jobs.`,
+        );
+      }
+
+      // RULE 2: IN_PROGRESS - Block only SAME provider
+      if (existingJob.status === 'in_progress') {
+        if (isSameProvider) {
+          throw new BadRequestException(
+            `You already have a job in progress with ${providerName}. Complete or cancel it first before requesting another job with them.`,
+          );
+        }
+        // Different provider is OK
+        continue;
+      }
+
+      // RULE 3: NEW status - Check acceptance
+      if (existingJob.status === 'new') {
+        // 3a: If SP accepted - Block everything
+        if (existingJob.sp_accepted) {
+          throw new BadRequestException(
+            `You have an active request (#${existingJob.id}) awaiting your confirmation. Close or cancel it first.`,
+          );
+        }
+
+        // 3b: SP not accepted yet - Block SAME provider only
+        if (isSameProvider) {
+          throw new BadRequestException(
+            `You already have a pending request (#${existingJob.id}) with ${providerName}. Resend the request or wait for response.`,
+          );
+        }
+        // Different provider is OK
+        continue;
+      }
     }
 
     // Create job, payment, chat, and initial message in a transaction
@@ -849,6 +889,93 @@ export class JobsService {
           message: 'Job rejected successfully',
         };
       }
+    });
+  }
+
+  /**
+   * Resend job request to same provider
+   * Extends deadline and notifies provider again
+   */
+  async resendJobRequest(customerId: number, jobId: number) {
+    const customer = await this.prisma.customers.findUnique({
+      where: { user_id: customerId },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer profile not found');
+    }
+
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: jobId },
+      include: {
+        service_provider: {
+          include: {
+            user: { select: { first_name: true, last_name: true } },
+          },
+        },
+        service: { select: { name: true } },
+        chats: true,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.customer_id !== customer.id) {
+      throw new ForbiddenException('You can only resend your own jobs');
+    }
+
+    // Can only resend if status is 'new' and SP hasn't accepted
+    if (job.status !== 'new') {
+      throw new BadRequestException('Can only resend pending requests');
+    }
+
+    if (job.sp_accepted) {
+      throw new BadRequestException('Cannot resend - provider has already accepted');
+    }
+
+    // Extend deadline by 1 hour
+    const newDeadline = new Date(Date.now() + 60 * 60 * 1000);
+
+    return await this.prisma.$transaction(async (tx) => {
+      // Update job with new deadline
+      const updatedJob = await tx.jobs.update({
+        where: { id: jobId },
+        data: {
+          response_deadline: newDeadline,
+        },
+      });
+
+      // Send resend notification to provider
+      await tx.notifications.create({
+        data: {
+          recipient_type: 'service_provider',
+          recipient_id: job.service_provider.user_id,
+          type: 'job',
+          title: '🔔 Job Request Reminder',
+          message: `Customer resent their ${job.service.name} request. New deadline: ${newDeadline.toLocaleString()}`,
+        },
+      });
+
+      // Add chat message
+      if (job.chats.length > 0) {
+        await tx.messages.create({
+          data: {
+            chat_id: job.chats[0].id,
+            sender_type: 'customer',
+            sender_id: customerId,
+            message_type: 'text',
+            message: '📢 Reminder: Please review and respond to this request. Deadline extended by 1 hour.',
+          },
+        });
+      }
+
+      return {
+        jobId: updatedJob.id,
+        newDeadline: updatedJob.response_deadline,
+        message: 'Job request resent successfully. Provider has been notified.',
+      };
     });
   }
 }

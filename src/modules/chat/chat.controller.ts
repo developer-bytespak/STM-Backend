@@ -7,6 +7,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  Body,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -22,8 +23,9 @@ import { RolesGuard } from '../oauth/guards/roles.guard';
 import { Roles } from '../oauth/decorators/roles.decorator';
 import { CurrentUser } from '../oauth/decorators/current-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+import { SendNegotiationOfferDto, RespondToNegotiationDto } from './dto/negotiation.dto';
 
-@Controller()
+@Controller('chat')
 @ApiTags('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
@@ -71,7 +73,7 @@ export class ChatController {
    * Get messages for a specific chat
    * Used for loading message history when opening a chat
    */
-  @Get('chat/:id/messages')
+  @Get(':id/messages')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all messages in a chat (message history)' })
@@ -90,7 +92,7 @@ export class ChatController {
    * Upload files for chat
    * Returns URLs of uploaded files that can be sent as messages
    */
-  @Post('chat/upload-files')
+  @Post('upload-files')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiConsumes('multipart/form-data')
@@ -126,6 +128,58 @@ export class ChatController {
     }
 
     return this.chatService.uploadChatFiles(userId, files);
+  }
+
+  /**
+   * Send negotiation offer (both provider and customer)
+   */
+  @Post('negotiation/send-offer')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Send negotiation offer in chat (price, date, notes)' })
+  @ApiResponse({ status: 200, description: 'Offer sent successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async sendNegotiationOffer(
+    @CurrentUser('id') userId: number,
+    @CurrentUser('role') userRole: string,
+    @Body() dto: SendNegotiationOfferDto,
+  ) {
+    return this.chatService.sendNegotiationOffer(userId, userRole, dto);
+  }
+
+  /**
+   * Respond to negotiation offer (accept, decline, counter)
+   */
+  @Post('negotiation/respond')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Respond to offer (accept, decline, counter)' })
+  @ApiResponse({ status: 200, description: 'Response sent successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async respondToNegotiationOffer(
+    @CurrentUser('id') userId: number,
+    @CurrentUser('role') userRole: string,
+    @Body() dto: RespondToNegotiationDto,
+  ) {
+    return this.chatService.respondToNegotiationOffer(userId, userRole, dto);
+  }
+
+  /**
+   * Get negotiation history for a job
+   */
+  @Get('negotiation/job/:jobId/history')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get negotiation history for a job' })
+  @ApiResponse({ status: 200, description: 'Negotiation history retrieved' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async getNegotiationHistory(
+    @CurrentUser('id') userId: number,
+    @Param('jobId') jobId: string,
+  ) {
+    return this.chatService.getNegotiationHistory(parseInt(jobId), userId);
   }
 
   // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
