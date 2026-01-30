@@ -53,6 +53,7 @@ export class ChatService {
           include: {
             user: {
               select: {
+                id: true,
                 first_name: true,
                 last_name: true,
                 profile_picture: true,
@@ -77,6 +78,7 @@ export class ChatService {
       },
       provider: {
         id: chat.service_provider.id,
+        userId: chat.service_provider.user.id,
         businessName: chat.service_provider.business_name,
         user: chat.service_provider.user,
       },
@@ -118,6 +120,7 @@ export class ChatService {
           include: {
             user: {
               select: {
+                id: true,
                 first_name: true,
                 last_name: true,
                 profile_picture: true,
@@ -141,6 +144,7 @@ export class ChatService {
         status: chat.job?.status,
       },
       customer: {
+        userId: chat.customer.user.id,
         name: `${chat.customer.user.first_name} ${chat.customer.user.last_name}`,
         profilePicture: chat.customer.user.profile_picture,
       },
@@ -290,13 +294,14 @@ export class ChatService {
       orderBy: { created_at: 'asc' },
     });
 
-    // Helper function to get sender name
+    // Helper function to get sender name (coerce IDs to number for consistent comparison)
     const getSenderName = (senderId: number, senderType: string): string => {
-      if (senderType === 'customer' && chat.customer.user.id === senderId) {
+      const sid = Number(senderId);
+      if (senderType === 'customer' && Number(chat.customer.user.id) === sid) {
         return `${chat.customer.user.first_name} ${chat.customer.user.last_name}`;
-      } else if (senderType === 'service_provider' && chat.service_provider.user.id === senderId) {
+      } else if (senderType === 'service_provider' && Number(chat.service_provider.user.id) === sid) {
         return `${chat.service_provider.user.first_name} ${chat.service_provider.user.last_name}`;
-      } else if (senderType === 'local_service_manager' && chat.local_service_manager && chat.local_service_manager.user.id === senderId) {
+      } else if (senderType === 'local_service_manager' && chat.local_service_manager && Number(chat.local_service_manager.user.id) === sid) {
         return `${chat.local_service_manager.user.first_name} ${chat.local_service_manager.user.last_name}`;
       }
       return 'Unknown User';
@@ -304,11 +309,11 @@ export class ChatService {
 
     return {
       chatId: chat.id,
-      messages: messages.map((msg) => ({
+        messages: messages.map((msg) => ({
         id: msg.id,
         sender_type: msg.sender_type,
-        sender_id: msg.sender_id,
-        sender_name: getSenderName(msg.sender_id, msg.sender_type),
+        sender_id: Number(msg.sender_id),
+        sender_name: getSenderName(Number(msg.sender_id), msg.sender_type),
         message: msg.message,
         message_type: msg.message_type,
         created_at: msg.created_at,
@@ -770,6 +775,14 @@ export class ChatService {
       throw new BadRequestException('No chat found for this job');
     }
 
+    // Normalize date to ISO string (dto may send Date or string)
+    const toIsoDate = (d: Date | string | null | undefined): string | null => {
+      if (d == null) return null;
+      if (typeof d === 'string') return d || null;
+      if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString();
+      return null;
+    };
+
     // Build offer data
     const offerData = {
       offered_by: senderRole,
@@ -778,7 +791,7 @@ export class ChatService {
       original_price: job.price.toNumber(),
       proposed_price: proposed_price ?? job.price.toNumber(),
       original_date: job.scheduled_at?.toISOString() || null,
-      proposed_date: proposed_date?.toISOString() || null,
+      proposed_date: toIsoDate(proposed_date as Date | string) ?? null,
       notes: notes || '',
       status: 'pending',
     };
@@ -805,17 +818,17 @@ export class ChatService {
       },
     });
 
-    // Broadcast message to both parties via socket
+    // Emit same shape as gateway (snake_case) so frontend displays sender name and date correctly
+    const createdAt = message.created_at instanceof Date ? message.created_at.toISOString() : message.created_at;
     const messageData = {
       id: message.id,
       chatId: chat.id,
-      jobId: job_id,
-      senderId: userId,
-      senderName: senderName,
-      senderRole: senderRole,
-      content: messageText,
-      timestamp: message.created_at,
-      type: 'text',
+      sender_type: senderRole,
+      sender_id: userId,
+      sender_name: senderName,
+      message: messageText,
+      message_type: 'text' as const,
+      created_at: createdAt,
     };
 
     // Emit only to personal rooms to avoid duplicates
@@ -933,16 +946,16 @@ export class ChatService {
           },
         });
 
+        const createdAt = message.created_at instanceof Date ? message.created_at.toISOString() : message.created_at;
         const messageData = {
           id: message.id,
           chatId: chat.id,
-          jobId: job_id,
-          senderId: userId,
-          senderName: responderName,
-          senderRole: responderRole,
-          content: messageText,
-          timestamp: message.created_at,
-          type: 'text',
+          sender_type: responderRole,
+          sender_id: userId,
+          sender_name: responderName,
+          message: messageText,
+          message_type: 'text' as const,
+          created_at: createdAt,
         };
 
         return { success: true, message: 'Offer accepted! Deal confirmed.', action: 'accepted', messageData };
@@ -977,16 +990,16 @@ export class ChatService {
           },
         });
 
+        const createdAtDecline = message.created_at instanceof Date ? message.created_at.toISOString() : message.created_at;
         const messageData = {
           id: message.id,
           chatId: chat.id,
-          jobId: job_id,
-          senderId: userId,
-          senderName: responderName,
-          senderRole: responderRole,
-          content: messageText,
-          timestamp: message.created_at,
-          type: 'text',
+          sender_type: responderRole,
+          sender_id: userId,
+          sender_name: responderName,
+          message: messageText,
+          message_type: 'text' as const,
+          created_at: createdAtDecline,
         };
 
         return { success: true, message: 'Offer declined.', action: 'declined', messageData };
@@ -997,6 +1010,14 @@ export class ChatService {
           throw new BadRequestException('Please provide at least a price or date for counter offer');
         }
 
+        const counterDateIso =
+          counter_proposed_date == null
+            ? null
+            : counter_proposed_date instanceof Date
+              ? counter_proposed_date.toISOString()
+              : typeof counter_proposed_date === 'string'
+                ? counter_proposed_date
+                : null;
         const counterOffer = {
           offered_by: responderRole,
           offered_by_name: responderName,
@@ -1005,7 +1026,7 @@ export class ChatService {
           original_price: currentOffer.proposed_price || currentOffer.original_price,
           proposed_price: counter_proposed_price ?? (currentOffer.proposed_price || currentOffer.original_price),
           original_date: currentOffer.proposed_date || currentOffer.original_date,
-          proposed_date: counter_proposed_date?.toISOString() || currentOffer.proposed_date || currentOffer.original_date,
+          proposed_date: counterDateIso || currentOffer.proposed_date || currentOffer.original_date,
           notes: counter_notes || '',
           status: 'pending',
         };
@@ -1030,16 +1051,16 @@ export class ChatService {
           },
         });
 
+        const createdAtCounter = message.created_at instanceof Date ? message.created_at.toISOString() : message.created_at;
         const messageData = {
           id: message.id,
           chatId: chat.id,
-          jobId: job_id,
-          senderId: userId,
-          senderName: responderName,
-          senderRole: responderRole,
-          content: messageText,
-          timestamp: message.created_at,
-          type: 'text',
+          sender_type: responderRole,
+          sender_id: userId,
+          sender_name: responderName,
+          message: messageText,
+          message_type: 'text' as const,
+          created_at: createdAtCounter,
         };
 
         return { success: true, message: 'Counter offer sent!', action: 'countered', messageData };
@@ -1088,12 +1109,28 @@ export class ChatService {
       throw new ForbiddenException('You do not have access to this job');
     }
 
+    // Normalize dates to ISO strings so frontend never gets Invalid Date
+    const toIso = (d: unknown): string | null => {
+      if (d == null) return null;
+      if (typeof d === 'string') return d || null;
+      if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString();
+      return null;
+    };
+    const rawOffer = job.edited_answers as Record<string, unknown> | null;
+    const current_offer = rawOffer
+      ? {
+          ...rawOffer,
+          original_date: toIso(rawOffer.original_date) ?? (rawOffer.original_date as string | null) ?? null,
+          proposed_date: toIso(rawOffer.proposed_date) ?? (rawOffer.proposed_date as string | null) ?? null,
+        }
+      : null;
+
     return {
       job_id: jobId,
       current_status: job.pending_approval ? 'awaiting_response' : 'no_active_negotiation',
-      current_offer: job.edited_answers,
+      current_offer,
       original_price: job.price.toNumber(),
-      original_date: job.scheduled_at,
+      original_date: job.scheduled_at ? (job.scheduled_at instanceof Date ? job.scheduled_at.toISOString() : String(job.scheduled_at)) : null,
     };
   }
 
