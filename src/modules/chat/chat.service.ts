@@ -402,6 +402,7 @@ export class ChatService {
     aiSessionId: string,
     summary: string,
     extractedData?: any, // Extracted data from AI conversation (service, zipcode, budget, requirements)
+    images?: string[], // Image URLs uploaded by customer during AI chat
   ) {
     // Verify customer exists and include user details
     const customer = await this.prisma.customers.findUnique({
@@ -476,6 +477,7 @@ export class ChatService {
         console.log('\n[AI Chat] ========================================');
         console.log('[AI Chat] STEP 1: Creating job with extracted data');
         console.log('[AI Chat] Extracted data:', JSON.stringify(extractedData, null, 2));
+        console.log('[AI Chat] Images provided:', images?.length || 0);
         
         // Find service by name (case-insensitive)
         const service = await this.prisma.services.findFirst({
@@ -512,6 +514,7 @@ export class ChatService {
               ai_generated: true,
             },
             fromAI: true,
+            images: images || [], // Include customer uploaded images
           };
 
           console.log('[AI Chat] Job data prepared:', JSON.stringify(jobData, null, 2));
@@ -710,6 +713,7 @@ export class ChatService {
       console.log('[AI Chat] ✅ COMPLETE: Chat and job creation finished');
       console.log('[AI Chat] Chat ID:', chat.id);
       console.log('[AI Chat] Job ID:', jobId || 'none');
+      console.log('[AI Chat] Images attached:', images?.length || 0);
       console.log('[AI Chat] ========================================\n');
 
       return {

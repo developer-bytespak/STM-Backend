@@ -171,6 +171,7 @@ export class AiChatController {
       const extractedData = await this.aiChatService.extractDataFromConversation(dto.aiSessionId, userId);
       
       console.log('[AI Chat Controller] Extracted data:', JSON.stringify(extractedData, null, 2));
+      console.log('[AI Chat Controller] Images received:', dto.images?.length || 0);
 
       // Create chat with AI summary injection
       return this.chatService.createChatFromAI(
@@ -179,6 +180,7 @@ export class AiChatController {
         session.session_id,
         session.summary,
         extractedData, // Pass extracted data for job creation
+        dto.images, // Pass customer uploaded images
       );
     } catch (error) {
       // Handle unpaid job error specifically
