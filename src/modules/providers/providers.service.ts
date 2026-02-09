@@ -1251,4 +1251,119 @@ export class ProvidersService {
       createdAt: review.created_at,
     };
   }
+
+  // ==================== EMAIL TEMPLATES ====================
+
+  /**
+   * Get SP's email templates (returns null fields if not customized)
+   */
+  async getEmailTemplates(userId: number) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Try to find existing template
+    let template = await this.prisma.sp_email_templates.findUnique({
+      where: { provider_id: provider.id },
+    });
+
+    // If no template exists, return default response (all nulls)
+    if (!template) {
+      return {
+        id: null,
+        provider_id: provider.id,
+        first_message_template: null,
+        job_accepted_subject: null,
+        job_accepted_body: null,
+        negotiation_subject: null,
+        negotiation_body: null,
+        created_at: null,
+        updated_at: null,
+      };
+    }
+
+    return template;
+  }
+
+  /**
+   * Update SP's email templates
+   */
+  async updateEmailTemplates(userId: number, dto: any) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Check if template exists
+    let template = await this.prisma.sp_email_templates.findUnique({
+      where: { provider_id: provider.id },
+    });
+
+    // If no template exists, create one
+    if (!template) {
+      template = await this.prisma.sp_email_templates.create({
+        data: {
+          provider_id: provider.id,
+        },
+      });
+    }
+
+    // Update only provided fields
+    const updateData: any = {};
+    if (dto.first_message_template !== undefined) {
+      updateData.first_message_template = dto.first_message_template;
+    }
+    if (dto.job_accepted_subject !== undefined) {
+      updateData.job_accepted_subject = dto.job_accepted_subject;
+    }
+    if (dto.job_accepted_body !== undefined) {
+      updateData.job_accepted_body = dto.job_accepted_body;
+    }
+    if (dto.negotiation_subject !== undefined) {
+      updateData.negotiation_subject = dto.negotiation_subject;
+    }
+    if (dto.negotiation_body !== undefined) {
+      updateData.negotiation_body = dto.negotiation_body;
+    }
+
+    // Update template
+    const updatedTemplate = await this.prisma.sp_email_templates.update({
+      where: { id: template.id },
+      data: updateData,
+    });
+
+    return {
+      message: 'Email templates updated successfully',
+      data: updatedTemplate,
+    };
+  }
+
+  /**
+   * Reset email templates to defaults (delete row or set all to null)
+   */
+  async resetEmailTemplates(userId: number) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Delete template if exists
+    await this.prisma.sp_email_templates.delete({
+      where: { provider_id: provider.id },
+    }).catch(() => null); // Ignore if doesn't exist
+
+    return {
+      message: 'Email templates reset to system defaults',
+    };
+  }
 }
