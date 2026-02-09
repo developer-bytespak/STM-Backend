@@ -3,11 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateJobDto, ReassignJobDto, RespondJobDto, JobResponseAction } from './dto';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { EmailService } from '../shared/services/email.service';
+import { ChatService } from '../chat/chat.service';
 
 @Injectable()
 export class JobsService {
@@ -15,6 +18,8 @@ export class JobsService {
     private readonly prisma: PrismaService,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly emailService: EmailService,
+    @Inject(forwardRef(() => ChatService))
+    private readonly chatService: ChatService,
   ) {}
 
   /**
@@ -157,7 +162,7 @@ export class JobsService {
     }
 
     // Create job, payment, chat, and initial message in a transaction
-    return await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Prepare answers with in-person visit info if requested
       const jobAnswers = {
         ...dto.answers,
@@ -220,6 +225,42 @@ export class JobsService {
         });
       }
 
+      // 6. Send provider's auto-message if they have a customized template
+      let providerAutoMessage = null;
+      const emailTemplate = await tx.sp_email_templates.findUnique({
+        where: { provider_id: provider.id },
+        select: { first_message_template: true },
+      });
+
+      if (emailTemplate?.first_message_template) {
+        const customerName = `${customer.user.first_name} ${customer.user.last_name}`;
+        const scheduledDateStr = dto.preferredDate 
+          ? new Date(dto.preferredDate).toLocaleDateString()
+          : 'Not specified';
+
+        // Replace variables in the template
+        const autoMessageText = this.chatService.replaceMessageVariables(
+          emailTemplate.first_message_template,
+          {
+            customerName,
+            serviceName: service.name,
+            location: dto.location,
+            scheduledDate: scheduledDateStr,
+          },
+        );
+
+        // Create the provider's auto-message directly in transaction
+        providerAutoMessage = await tx.messages.create({
+          data: {
+            chat_id: chat.id,
+            sender_type: 'service_provider',
+            sender_id: provider.user_id,
+            message_type: 'text',
+            message: autoMessageText,
+          },
+        });
+      }
+
       // 5. Create notification for provider
       const notification = await tx.notifications.create({
         data: {
@@ -272,9 +313,30 @@ export class JobsService {
           id: chat.id,
           created_at: chat.created_at,
         },
+        providerAutoMessage: providerAutoMessage,
+        providerUserId: provider.user_id,
+        customerUserId: customerId,
         message: 'Job created successfully. Service provider has been notified.',
       };
     });
+
+    // Emit provider's auto-message via Socket.IO if one was created
+    if (result.providerAutoMessage) {
+      const providerName = provider.business_name || `${provider.user.first_name} ${provider.user.last_name}`;
+      this.chatService.emitProviderAutoMessage(
+        result.providerAutoMessage,
+        provider.id,
+        customerId,
+        providerName,
+      );
+    }
+
+    // Return clean response
+    return {
+      job: result.job,
+      chat: result.chat,
+      message: result.message,
+    };
   }
 
   /**
@@ -724,6 +786,7 @@ export class JobsService {
           const customerName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
           const providerName = provider.business_name || `${provider.user.first_name} ${provider.user.last_name}`;
           this.emailService.sendJobAcceptedEmailToCustomer(
+            provider.id,
             job.customer.user.email,
             customerName,
             {
@@ -821,6 +884,7 @@ export class JobsService {
           const customerName = `${job.customer.user.first_name} ${job.customer.user.last_name}`;
           const providerName = provider.business_name || `${provider.user.first_name} ${provider.user.last_name}`;
           this.emailService.sendJobNegotiationEmailToCustomer(
+            provider.id,
             job.customer.user.email,
             customerName,
             {

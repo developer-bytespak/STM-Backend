@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import sgMail from '@sendgrid/mail';
+import { PrismaService } from '../../../../prisma/prisma.service';
 
 @Injectable()
 export class EmailService {
@@ -10,7 +11,10 @@ export class EmailService {
   private readonly testCustomerEmail: string | null;
   private readonly testProviderEmail: string | null;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const apiKey = this.configService.get<string>('SENDGRID_API_KEY');
     if (apiKey) {
       sgMail.setApiKey(apiKey);
@@ -65,6 +69,34 @@ export class EmailService {
 
     // In production or if test emails not configured, use actual email
     return actualEmail;
+  }
+
+  /**
+   * Replace template variables with actual values
+   * e.g., [CUSTOMER_NAME] → John, [PRICE] → 200
+   */
+  private replaceVariables(template: string, variables: Record<string, any>): string {
+    let result = template;
+
+    Object.entries(variables).forEach(([key, value]) => {
+      const placeholder = `[${key.toUpperCase()}]`;
+      result = result.replace(new RegExp(placeholder, 'g'), String(value || ''));
+    });
+
+    return result;
+  }
+
+  /**
+   * Strip HTML tags from content (converts to plain text)
+   */
+  private stripHtmlTags(html: string): string {
+    return html
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .trim();
   }
 
   /**
@@ -168,6 +200,7 @@ export class EmailService {
    * Send email to customer when provider accepts the job
    */
   async sendJobAcceptedEmailToCustomer(
+    providerId: number,
     customerEmail: string,
     customerName: string,
     jobDetails: {
@@ -184,18 +217,52 @@ export class EmailService {
         return;
       }
 
-      const subject = `✅ Your ${jobDetails.serviceName} Request Has Been Accepted!`;
-      const htmlContent = this.getJobAcceptedEmailTemplate(
-        customerName,
-        jobDetails,
-      );
+      // Check if provider has custom email template
+      const customTemplate = await this.prisma.sp_email_templates.findUnique({
+        where: { provider_id: providerId },
+      });
+
+      let subject: string;
+      let htmlContent: string;
+      let textContent: string;
+
+      if (customTemplate?.job_accepted_subject && customTemplate?.job_accepted_body) {
+        // Use custom template
+        const variables = {
+          customerName,
+          serviceName: jobDetails.serviceName,
+          providerName: jobDetails.providerName,
+          price: jobDetails.price.toFixed(2),
+          jobId: jobDetails.jobId,
+        };
+
+        subject = this.replaceVariables(customTemplate.job_accepted_subject, variables);
+        htmlContent = this.replaceVariables(customTemplate.job_accepted_body, variables);
+        textContent = this.stripHtmlTags(htmlContent);
+
+        this.logger.log(
+          `✉️ Using custom job accepted email template for provider #${providerId}`,
+        );
+      } else {
+        // Use system default template
+        subject = `✅ Your ${jobDetails.serviceName} Request Has Been Accepted!`;
+        htmlContent = this.getJobAcceptedEmailTemplate(
+          customerName,
+          jobDetails,
+        );
+        textContent = this.getJobAcceptedEmailText(customerName, jobDetails);
+
+        this.logger.log(
+          `✉️ Using default job accepted email template for provider #${providerId}`,
+        );
+      }
 
       const message = {
         to: emailToUse,
         from: this.fromEmail,
         subject,
         html: htmlContent,
-        text: this.getJobAcceptedEmailText(customerName, jobDetails),
+        text: textContent,
       };
 
       await sgMail.send(message);
@@ -215,6 +282,7 @@ export class EmailService {
    * Send email to customer when provider negotiates/proposes changes
    */
   async sendJobNegotiationEmailToCustomer(
+    providerId: number,
     customerEmail: string,
     customerName: string,
     jobDetails: {
@@ -234,18 +302,55 @@ export class EmailService {
         return;
       }
 
-      const subject = `💬 ${jobDetails.providerName} Proposed Changes to Your Request`;
-      const htmlContent = this.getJobNegotiationEmailTemplate(
-        customerName,
-        jobDetails,
-      );
+      // Check if provider has custom email template
+      const customTemplate = await this.prisma.sp_email_templates.findUnique({
+        where: { provider_id: providerId },
+      });
+
+      let subject: string;
+      let htmlContent: string;
+      let textContent: string;
+
+      if (customTemplate?.negotiation_subject && customTemplate?.negotiation_body) {
+        // Use custom template
+        const variables = {
+          customerName,
+          providerName: jobDetails.providerName,
+          serviceName: jobDetails.serviceName,
+          originalPrice: jobDetails.originalPrice?.toFixed(2) || '',
+          newPrice: jobDetails.editedPrice?.toFixed(2) || '',
+          newSchedule: jobDetails.editedSchedule || '',
+          providerNotes: jobDetails.negotiationNotes,
+          jobId: jobDetails.jobId,
+        };
+
+        subject = this.replaceVariables(customTemplate.negotiation_subject, variables);
+        htmlContent = this.replaceVariables(customTemplate.negotiation_body, variables);
+        textContent = this.stripHtmlTags(htmlContent);
+
+        this.logger.log(
+          `✉️ Using custom negotiation email template for provider #${providerId}`,
+        );
+      } else {
+        // Use system default template
+        subject = `💬 ${jobDetails.providerName} Proposed Changes to Your Request`;
+        htmlContent = this.getJobNegotiationEmailTemplate(
+          customerName,
+          jobDetails,
+        );
+        textContent = this.getJobNegotiationEmailText(customerName, jobDetails);
+
+        this.logger.log(
+          `✉️ Using default negotiation email template for provider #${providerId}`,
+        );
+      }
 
       const message = {
         to: emailToUse,
         from: this.fromEmail,
         subject,
         html: htmlContent,
-        text: this.getJobNegotiationEmailText(customerName, jobDetails),
+        text: textContent,
       };
 
       await sgMail.send(message);

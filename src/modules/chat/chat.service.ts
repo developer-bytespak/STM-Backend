@@ -1208,6 +1208,78 @@ export class ChatService {
     return lines.join('\n');
   }
 
+  /**
+   * Replace variables in provider's message template
+   * Supports: [CUSTOMER_NAME], [SERVICE_NAME], [LOCATION], [SCHEDULED_DATE]
+   */
+  replaceMessageVariables(
+    template: string,
+    variables: {
+      customerName?: string;
+      serviceName?: string;
+      location?: string;
+      scheduledDate?: string;
+    },
+  ): string {
+    let message = template;
+
+    if (variables.customerName) {
+      message = message.replace(/\[CUSTOMER_NAME\]/g, variables.customerName);
+    }
+    if (variables.serviceName) {
+      message = message.replace(/\[SERVICE_NAME\]/g, variables.serviceName);
+    }
+    if (variables.location) {
+      message = message.replace(/\[LOCATION\]/g, variables.location);
+    }
+    if (variables.scheduledDate) {
+      message = message.replace(/\[SCHEDULED_DATE\]/g, variables.scheduledDate);
+    }
+
+    return message;
+  }
+
+  /**
+   * Emit provider auto-message via Socket.IO
+   * Called after job transaction completes
+   */
+  emitProviderAutoMessage(
+    message: any,
+    providerId: number,
+    customerId: number,
+    providerName: string,
+  ) {
+    try {
+      if (!this.chatGateway?.server) {
+        console.warn('[Chat] ChatGateway server not available for emitting auto-message');
+        return;
+      }
+
+      const createdAt = message.created_at instanceof Date 
+        ? message.created_at.toISOString() 
+        : message.created_at;
+
+      const messageData = {
+        id: message.id,
+        chatId: message.chat_id,
+        sender_type: 'service_provider',
+        sender_id: message.sender_id,
+        sender_name: providerName,
+        message: message.message,
+        message_type: 'text',
+        created_at: createdAt,
+      };
+
+      // Emit to both customer and provider personal rooms
+      this.chatGateway.server.to(`user:${customerId}`).emit('new_message', messageData);
+      this.chatGateway.server.to(`user:${providerId}`).emit('new_message', messageData);
+      console.log(`[Chat] Auto-message emitted for chat ${message.chat_id}`);
+    } catch (error) {
+      console.error('[Chat] Error emitting auto-message:', error);
+      // Don't fail - message will still appear when they load the chat
+    }
+  }
+
   // Note: Sending messages is now handled via Socket.IO (chat.gateway.ts)
   // Use the 'send_message' Socket.IO event for real-time messaging
 }

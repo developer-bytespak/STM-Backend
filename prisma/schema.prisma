@@ -93,6 +93,7 @@ model service_providers {
   service_requests      service_requests[]
   ban_requests          ban_requests[]
   meetings              meetings[]
+  email_templates       sp_email_templates?
 }
 
 model local_service_managers {
@@ -116,6 +117,27 @@ model admin {
   user_id    Int      @unique
   created_at DateTime @default(now())
   user       users    @relation(fields: [user_id], references: [id])
+}
+
+model sp_email_templates {
+  id                      Int               @id @default(autoincrement())
+  provider_id             Int               @unique
+
+  // Initial auto-message in chat when job created
+  first_message_template  String?
+
+  // Job Accepted email (when SP accepts)
+  job_accepted_subject    String?
+  job_accepted_body       String?           // HTML content
+
+  // Negotiation email (when SP proposes changes)
+  negotiation_subject     String?
+  negotiation_body        String?           // HTML content
+
+  created_at              DateTime          @default(now())
+  updated_at              DateTime          @updatedAt
+
+  service_provider        service_providers @relation(fields: [provider_id], references: [id], onDelete: Cascade)
 }
 
 model services {

@@ -390,4 +390,50 @@ export class ProvidersController {
   ) {
     return this.providersService.getReviewById(userId, reviewId);
   }
+
+  // ==================== EMAIL TEMPLATES ====================
+
+  /**
+   * Get email templates
+   */
+  @Get('email-templates')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get email templates (custom or null for defaults)' })
+  @ApiResponse({ status: 200, description: 'Email templates retrieved successfully' })
+  async getEmailTemplates(@CurrentUser('id') userId: number) {
+    return this.providersService.getEmailTemplates(userId);
+  }
+
+  /**
+   * Update email templates
+   */
+  @Put('email-templates')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update email templates' })
+  @ApiResponse({ status: 200, description: 'Email templates updated successfully' })
+  async updateEmailTemplates(
+    @CurrentUser('id') userId: number,
+    @Body() dto: any,
+  ) {
+    return this.providersService.updateEmailTemplates(userId, dto);
+  }
+
+  /**
+   * Reset email templates to system defaults
+   */
+  @Delete('email-templates')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset email templates to system defaults' })
+  @ApiResponse({ status: 200, description: 'Email templates reset successfully' })
+  async resetEmailTemplates(@CurrentUser('id') userId: number) {
+    return this.providersService.resetEmailTemplates(userId);
+  }
 }
