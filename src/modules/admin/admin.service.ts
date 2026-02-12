@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ProviderAvailabilityReminderService } from '../shared/services/provider-availability-reminder.service';
 import { CreateLsmDto } from './dto/create-lsm.dto';
 import { UpdateLsmDto } from './dto/update-lsm.dto';
 import { ReplaceLsmDto } from './dto/replace-lsm.dto';
@@ -14,7 +15,10 @@ import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly providerAvailabilityReminderService: ProviderAvailabilityReminderService,
+  ) {}
 
   /**
    * Get LSM-approved service requests pending admin approval
@@ -3579,6 +3583,21 @@ export class AdminService {
       summary,
       data,
       statusTypes: Array.from(statusTypes).sort(),
+    };
+  }
+
+  /**
+   * TEST ENDPOINT: Manually trigger provider availability reminders
+   * Used for testing/manual execution of weekly reminders
+   */
+  async testSendAvailabilityReminders() {
+    const result =
+      await this.providerAvailabilityReminderService.sendRemindersToAllActiveProviders();
+
+    return {
+      success: true,
+      message: 'Provider availability reminders sent successfully',
+      stats: result,
     };
   }
 }

@@ -1366,4 +1366,44 @@ export class ProvidersService {
       message: 'Email templates reset to system defaults',
     };
   }
+
+  /**
+   * Confirm provider availability - updates the updated_at timestamp
+   * Called when provider confirms weekly availability
+   */
+  async confirmAvailability(userId: number) {
+    const provider = await this.prisma.service_providers.findUnique({
+      where: { user_id: userId },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+          },
+        },
+      },
+    });
+
+    if (!provider) {
+      throw new NotFoundException('Service provider profile not found');
+    }
+
+    // Update the updated_at timestamp to mark confirmation
+    const updatedProvider = await this.prisma.service_providers.update({
+      where: { id: provider.id },
+      data: {
+        updated_at: new Date(),
+      },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+          },
+        },
+      },
+    });
+
+    return updatedProvider;
+  }
 }

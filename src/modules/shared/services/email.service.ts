@@ -723,4 +723,129 @@ Please review these changes and approve or continue negotiating in the app.
 This is an automated notification. Please do not reply to this email.
     `.trim();
   }
+
+  /**
+   * Send weekly availability confirmation reminder to service provider
+   */
+  async sendAvailabilityConfirmationReminder(
+    providerEmail: string,
+    providerDetails: {
+      id: number;
+      name: string;
+      rating: number;
+      tier: string;
+      totalJobs: number;
+      serviceAreas: string;
+      services: string;
+    },
+  ): Promise<void> {
+    try {
+      const emailToUse = this.getEmailAddress(providerEmail, 'provider');
+      if (!emailToUse) {
+        this.logger.warn(
+          `⚠️ No email for provider #${providerDetails.id}`,
+        );
+        return;
+      }
+
+      const subject = `Weekly Availability Check - Please Confirm Your Profile`;
+      const htmlContent = this.getAvailabilityConfirmationEmailTemplate(
+        providerDetails,
+      );
+      const textContent = this.stripHtmlTags(htmlContent);
+
+      const message = {
+        to: emailToUse,
+        from: this.fromEmail,
+        subject,
+        html: htmlContent,
+        text: textContent,
+      };
+
+      await sgMail.send(message);
+      this.logger.log(
+        `✉️ Availability reminder sent to provider #${providerDetails.id}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to send availability reminder to provider #${providerDetails.id}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * HTML email template for availability confirmation
+   */
+  private getAvailabilityConfirmationEmailTemplate(providerDetails: {
+    id: number;
+    name: string;
+    rating: number;
+    tier: string;
+    totalJobs: number;
+    serviceAreas: string;
+    services: string;
+  }): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Weekly Availability Check</title>
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="color: white; margin: 0;">📅 Weekly Availability Check</h1>
+        </div>
+        <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0;">
+          <p style="font-size: 16px;">Hi ${providerDetails.name},</p>
+          
+          <p style="font-size: 16px;">This is your weekly reminder to confirm your availability and verify your profile details.</p>
+          
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+            <h2 style="margin-top: 0; color: #667eea;">Your Profile Summary</h2>
+            <p><strong>Rating:</strong> ⭐ ${providerDetails.rating.toFixed(2)} / 5.0</p>
+            <p><strong>Tier:</strong> ${providerDetails.tier}</p>
+            <p><strong>Total Jobs:</strong> ${providerDetails.totalJobs}</p>
+            <p><strong>Service Areas:</strong> ${providerDetails.serviceAreas}</p>
+            <p><strong>Services:</strong> ${providerDetails.services}</p>
+          </div>
+          
+          <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
+            <p style="margin: 0; font-size: 14px;">
+              <strong>📌 Action Required:</strong> Please review your profile and confirm that your information is accurate and up-to-date.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/provider/profile" 
+               style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+              View & Confirm Profile
+            </a>
+          </div>
+          
+          <div style="background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 20px 0; font-size: 14px; line-height: 1.8;">
+            <p style="margin: 0 0 10px 0;"><strong>Why we send this:</strong></p>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li>To ensure your profile information is current and accurate</li>
+              <li>To confirm your availability to serve customers</li>
+              <li>To keep your profile visible and active in our system</li>
+            </ul>
+          </div>
+          
+          <p style="font-size: 14px; color: #666; margin-top: 30px;">
+            <strong>Need to update your availability?</strong><br>
+            Log in to your dashboard and update your service areas, rates, or set your status to inactive if needed.
+          </p>
+          
+          <p style="font-size: 14px; color: #999; margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+            This is an automated notification. Please do not reply to this email. If you have questions, please contact support.
+          </p>
+        </div>
+      </body>
+      </html>
+    `;
+  }
 }

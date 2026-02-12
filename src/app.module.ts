@@ -6,6 +6,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JobTimeoutService } from './modules/shared/services/job-timeout.service';
+import { ProviderAvailabilityReminderService } from './modules/shared/services/provider-availability-reminder.service';
+import { EmailService } from './modules/shared/services/email.service';
 
 // Import all modules
 import { OAuthModule } from './modules/oauth/oauth.module';
@@ -65,6 +67,12 @@ import { VoiceModule } from './modules/voice/voice.module';
     VoiceModule,
   ],
   controllers: [AppController],
-  providers: [AppService, Logger, JobTimeoutService],
+  providers: [
+    AppService,
+    Logger,
+    JobTimeoutService,
+    ProviderAvailabilityReminderService,
+    EmailService,
+  ],
 })
 export class AppModule {}

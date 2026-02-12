@@ -656,4 +656,20 @@ export class AdminController {
   async deleteReview(@Param('id', ParseIntPipe) reviewId: number) {
     return this.adminService.deleteReview(reviewId);
   }
+
+  // ==================== TESTING ENDPOINTS ====================
+
+  /**
+   * Test endpoint - manually trigger provider availability reminders
+   * For testing/manual execution of weekly reminders
+   */
+  @Post('test/send-availability-reminders')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'TEST: Manually trigger provider availability reminders',
+  })
+  @ApiResponse({ status: 200, description: 'Reminders sent successfully' })
+  async testSendAvailabilityReminders() {
+    return this.adminService.testSendAvailabilityReminders();
+  }
 }
