@@ -436,4 +436,36 @@ export class ProvidersController {
   async resetEmailTemplates(@CurrentUser('id') userId: number) {
     return this.providersService.resetEmailTemplates(userId);
   }
+
+  // ==================== AVAILABILITY CONFIRMATION ====================
+
+  /**
+   * Confirm availability - weekly confirmation reminder
+   * Provider confirms they are still active and their profile is up-to-date
+   */
+  @Post('confirm-availability')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PROVIDER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirm weekly availability' })
+  @ApiResponse({
+    status: 200,
+    description: 'Availability confirmed successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Provider not found' })
+  async confirmAvailability(@CurrentUser('id') userId: number) {
+    const provider = await this.providersService.confirmAvailability(userId);
+    return {
+      success: true,
+      message: 'Availability confirmed successfully',
+      confirmedAt: provider.updated_at,
+      provider: {
+        id: provider.id,
+        name: provider.user?.first_name + ' ' + provider.user?.last_name,
+        status: provider.status,
+        is_active: provider.is_active,
+      },
+    };
+  }
 }
