@@ -892,6 +892,11 @@ export class CustomersService {
       throw new BadRequestException('Feedback already submitted for this job');
     }
 
+    // Validation: Below 3 stars requires explanation
+    if (dto.rating < 3 && (!dto.feedback || dto.feedback.trim().length === 0)) {
+      throw new BadRequestException('Explanation is required for ratings below 3 stars');
+    }
+
     return await this.prisma.$transaction(async (tx) => {
       // Create feedback
       await tx.ratings_feedback.create({
@@ -935,6 +940,43 @@ export class CustomersService {
         job.service_provider.user_id,
         notification,
       );
+
+      // NEW: Notify LSM if rating is below 3 stars
+      if (dto.rating < 3) {
+        // Get provider info including LSM details
+        const provider = await tx.service_providers.findUnique({
+          where: { id: job.provider_id },
+          select: {
+            business_name: true,
+            lsm_id: true,
+            rating: true,
+            local_service_manager: {
+              select: {
+                user_id: true,
+              },
+            },
+          },
+        });
+
+        if (provider && provider.lsm_id && provider.local_service_manager) {
+          // Create LSM notification
+          const lsmNotification = await tx.notifications.create({
+            data: {
+              recipient_type: 'local_service_manager',
+              recipient_id: provider.local_service_manager.user_id,
+              type: 'feedback',
+              title: 'Provider Below 3-Star Rating Alert',
+              message: `${provider.business_name} received a ${dto.rating}-star review. Current avg rating: ${avgRating.toFixed(2)}/5`,
+            },
+          });
+
+          // Emit real-time LSM notification via socket (using LSM's user_id)
+          await this.notificationsGateway.emitNotificationToUser(
+            provider.local_service_manager.user_id,
+            lsmNotification,
+          );
+        }
+      }
 
       return { message: 'Feedback submitted successfully' };
     });
