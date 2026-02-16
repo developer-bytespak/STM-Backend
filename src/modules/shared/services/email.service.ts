@@ -74,13 +74,20 @@ export class EmailService {
   /**
    * Replace template variables with actual values
    * e.g., [CUSTOMER_NAME] → John, [PRICE] → 200
+   * Converts camelCase keys to UPPER_SNAKE_CASE for template matching
+   * e.g., customerName → [CUSTOMER_NAME], jobId → [JOB_ID]
    */
   private replaceVariables(template: string, variables: Record<string, any>): string {
     let result = template;
 
     Object.entries(variables).forEach(([key, value]) => {
-      const placeholder = `[${key.toUpperCase()}]`;
-      result = result.replace(new RegExp(placeholder, 'g'), String(value || ''));
+      // Convert camelCase to UPPER_SNAKE_CASE
+      // e.g., customerName → CUSTOMER_NAME, jobId → JOB_ID, newPrice → NEW_PRICE
+      const snakeCase = key.replace(/([A-Z])/g, '_$1').toUpperCase();
+      const placeholder = `[${snakeCase}]`;
+      // Escape special regex characters: [ and ] must be escaped
+      const escapedPlaceholder = placeholder.replace(/[[\]]/g, '\\$&');
+      result = result.replace(new RegExp(escapedPlaceholder, 'g'), String(value || ''));
     });
 
     return result;
