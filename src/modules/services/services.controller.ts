@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Query, Body, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { SearchMatchingService } from './search-matching.service';
+import { SmartProvidersDto } from './dto/smart-providers.dto';
 
 @Controller('services')
 @ApiTags('services')
@@ -41,6 +42,19 @@ export class ServicesController {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
     });
+  }
+
+  /**
+   * Smart Search - Get best matching providers (filtered by service, zipcode, budget)
+   */
+  @Post('smart-providers')
+  @ApiOperation({ summary: 'Get best matching providers for service, zipcode, and budget' })
+  @ApiBody({ type: SmartProvidersDto })
+  @ApiResponse({ status: 200, description: 'Providers retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid request' })
+  @ApiResponse({ status: 404, description: 'Service not found' })
+  async getSmartProviders(@Body() dto: SmartProvidersDto) {
+    return this.searchService.getSmartProviders(dto);
   }
 
   /**

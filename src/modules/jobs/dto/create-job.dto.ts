@@ -90,4 +90,13 @@ export class CreateJobDto {
   })
   @IsOptional()
   images?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Project size in square feet (sent to provider with job request)',
+    example: 250,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  projectSizeSqft?: number;
 }
