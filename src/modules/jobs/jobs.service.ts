@@ -170,6 +170,9 @@ export class JobsService {
           in_person_visit_requested: true,
           in_person_visit_cost: dto.inPersonVisitCost || 50, // Default $50 if not specified
         }),
+        ...(dto.projectSizeSqft != null && {
+          project_size_sqft: dto.projectSizeSqft,
+        }),
       };
 
       // 1. Create job
@@ -349,6 +352,10 @@ export class JobsService {
     
     if (dto.customerBudget) {
       message += `💰 Customer Budget: $${dto.customerBudget}\n`;
+    }
+
+    if (dto.projectSizeSqft != null) {
+      message += `📏 Project Size: ${dto.projectSizeSqft} sq ft\n`;
     }
     
     if (dto.preferredDate) {
