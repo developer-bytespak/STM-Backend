@@ -78,6 +78,7 @@ model service_providers {
   max_price             Decimal?                 @db.Decimal(10, 2)
   min_price             Decimal?                 @db.Decimal(10, 2)
   terms_accepted_at     DateTime?
+  last_availability_confirmed_at DateTime?
   website_url           String?
   logo_url              String?
   banner_url            String?
