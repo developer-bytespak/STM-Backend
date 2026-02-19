@@ -5,10 +5,15 @@ import { JobImagesController } from './job-images.controller';
 import { JobImagesService } from './job-images.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ChatModule } from '../chat/chat.module';
+import { ServicesModule } from '../services/services.module';
 import { EmailService } from '../shared/services/email.service';
 
 @Module({
-  imports: [forwardRef(() => NotificationsModule), forwardRef(() => ChatModule)],
+  imports: [
+    forwardRef(() => NotificationsModule),
+    forwardRef(() => ChatModule),
+    ServicesModule,
+  ],
   controllers: [JobsController, JobImagesController],
   providers: [JobsService, JobImagesService, EmailService],
   exports: [JobsService],

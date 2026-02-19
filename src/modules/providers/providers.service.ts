@@ -287,6 +287,7 @@ export class ProvidersService {
         totalEarnings,
         averageRating,
         warnings: provider.warnings,
+        lastAvailabilityConfirmedAt: provider.last_availability_confirmed_at ?? null,
       },
       jobs: jobCounts,
       pendingActions: {
@@ -404,6 +405,7 @@ export class ProvidersService {
         activeJobsCount: provider.jobs.length,
         warnings: provider.warnings,
         rejectionReason: provider.rejection_reason, // LSM feedback if onboarding rejected
+        lastAvailabilityConfirmedAt: provider.last_availability_confirmed_at ?? null,
       },
       services: provider.provider_services.map((ps) => ({
         id: ps.service.id,
@@ -1368,8 +1370,8 @@ export class ProvidersService {
   }
 
   /**
-   * Confirm provider availability - updates the updated_at timestamp
-   * Called when provider confirms weekly availability
+   * Confirm provider availability - stores last confirmation time in DB.
+   * Frontend can use last_availability_confirmed_at to avoid showing the CTA again (e.g. this week).
    */
   async confirmAvailability(userId: number) {
     const provider = await this.prisma.service_providers.findUnique({
@@ -1388,11 +1390,11 @@ export class ProvidersService {
       throw new NotFoundException('Service provider profile not found');
     }
 
-    // Update the updated_at timestamp to mark confirmation
+    const now = new Date();
     const updatedProvider = await this.prisma.service_providers.update({
       where: { id: provider.id },
       data: {
-        updated_at: new Date(),
+        last_availability_confirmed_at: now,
       },
       include: {
         user: {
@@ -1403,6 +1405,23 @@ export class ProvidersService {
         },
       },
     });
+
+    // Notify all admins that this provider confirmed their availability
+    const providerName = `${updatedProvider.user.first_name} ${updatedProvider.user.last_name}`.trim();
+    const admins = await this.prisma.admin.findMany({
+      select: { user_id: true },
+    });
+    for (const admin of admins) {
+      await this.prisma.notifications.create({
+        data: {
+          recipient_type: 'admin',
+          recipient_id: admin.user_id,
+          type: 'system',
+          title: 'Provider confirmed availability',
+          message: `${providerName} (Provider #${updatedProvider.id}) confirmed their availability.`,
+        },
+      });
+    }
 
     return updatedProvider;
   }

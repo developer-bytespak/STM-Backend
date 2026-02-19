@@ -459,12 +459,13 @@ export class ProvidersController {
     return {
       success: true,
       message: 'Availability confirmed successfully',
-      confirmedAt: provider.updated_at,
+      confirmedAt: provider.last_availability_confirmed_at,
       provider: {
         id: provider.id,
         name: provider.user?.first_name + ' ' + provider.user?.last_name,
         status: provider.status,
         is_active: provider.is_active,
+        last_availability_confirmed_at: provider.last_availability_confirmed_at,
       },
     };
   }
