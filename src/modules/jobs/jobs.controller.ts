@@ -62,6 +62,25 @@ export class JobsController {
   }
 
   /**
+   * Get alternative providers for a job (same service, same area as current provider).
+   * Used when a job was rejected so the customer can choose another provider.
+   */
+  @Get('jobs/:id/alternative-providers')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get providers in same area for reassigning a rejected job' })
+  @ApiResponse({ status: 200, description: 'Alternative providers retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Not your job' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async getAlternativeProviders(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) jobId: number,
+  ) {
+    return this.jobsService.getAlternativeProviders(userId, jobId);
+  }
+
+  /**
    * Reassign job to different provider
    */
   @Post('jobs/:id/reassign')

@@ -11,6 +11,7 @@ import { CreateJobDto, ReassignJobDto, RespondJobDto, JobResponseAction } from '
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { EmailService } from '../shared/services/email.service';
 import { ChatService } from '../chat/chat.service';
+import { SearchMatchingService } from '../services/search-matching.service';
 
 @Injectable()
 export class JobsService {
@@ -18,6 +19,7 @@ export class JobsService {
     private readonly prisma: PrismaService,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly emailService: EmailService,
+    private readonly searchMatchingService: SearchMatchingService,
     @Inject(forwardRef(() => ChatService))
     private readonly chatService: ChatService,
   ) {}
@@ -440,6 +442,62 @@ export class JobsService {
   }
 
   /**
+   * Get alternative providers for a job (same service, same area as current provider).
+   * Used when a job was rejected so the customer can choose another provider.
+   */
+  async getAlternativeProviders(customerId: number, jobId: number) {
+    const customer = await this.prisma.customers.findUnique({
+      where: { user_id: customerId },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Customer profile not found');
+    }
+
+    const job = await this.prisma.jobs.findUnique({
+      where: { id: jobId },
+      include: {
+        service: true,
+        service_provider: {
+          include: { service_areas: true },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.customer_id !== customer.id) {
+      throw new ForbiddenException('You can only reassign your own jobs');
+    }
+
+    if (job.status !== 'new' && job.status !== 'rejected_by_sp') {
+      throw new BadRequestException(
+        'Alternative providers are only available for new or rejected jobs',
+      );
+    }
+
+    const areas = job.service_provider?.service_areas ?? [];
+    const zipcode =
+      areas.find((a) => a.is_primary)?.zipcode ?? areas[0]?.zipcode ?? undefined;
+
+    const result = await this.searchMatchingService.getProvidersForService(
+      job.service_id,
+      zipcode,
+      'rating',
+    );
+
+    const providers = result.providers.filter((p) => p.id !== job.provider_id);
+
+    return {
+      service: result.service,
+      providers,
+      zipcode: zipcode ?? null,
+    };
+  }
+
+  /**
    * Reassign job to a different provider
    */
   async reassignJob(customerId: number, jobId: number, dto: ReassignJobDto) {
@@ -451,12 +509,15 @@ export class JobsService {
       throw new NotFoundException('Customer profile not found');
     }
 
-    // Get existing job
+    // Get existing job with current provider's service areas (for same-area validation)
     const job = await this.prisma.jobs.findUnique({
       where: { id: jobId },
       include: {
         service: true,
         chats: true,
+        service_provider: {
+          include: { service_areas: true },
+        },
       },
     });
 
@@ -472,13 +533,14 @@ export class JobsService {
       throw new BadRequestException('Only new or rejected jobs can be reassigned');
     }
 
-    // Verify new provider
+    // Verify new provider (include service_areas for same-area check)
     const newProvider = await this.prisma.service_providers.findUnique({
       where: { id: dto.newProviderId },
       include: {
         provider_services: {
           where: { service_id: job.service_id },
         },
+        service_areas: true,
       },
     });
 
@@ -488,6 +550,21 @@ export class JobsService {
 
     if (newProvider.provider_services.length === 0) {
       throw new BadRequestException('Provider does not offer this service');
+    }
+
+    // Same-area check: new provider must serve the job's area (from current provider's service areas)
+    const areas = job.service_provider?.service_areas ?? [];
+    const areaZipcode =
+      areas.find((a) => a.is_primary)?.zipcode ?? areas[0]?.zipcode;
+    if (areaZipcode) {
+      const servesArea = newProvider.service_areas.some(
+        (a) => a.zipcode === areaZipcode,
+      );
+      if (!servesArea) {
+        throw new BadRequestException(
+          'Selected provider does not serve this job\'s area',
+        );
+      }
     }
 
     // Reassign in transaction
@@ -502,7 +579,7 @@ export class JobsService {
         });
       }
 
-      // 2. Update job
+      // 2. Update job (optional customerBudget / preferredDate from dto)
       const updatedJob = await tx.jobs.update({
         where: { id: jobId },
         data: {
@@ -510,10 +587,13 @@ export class JobsService {
           status: 'new',
           response_deadline: new Date(Date.now() + 60 * 60 * 1000),
           rejection_reason: null,
-          sp_accepted: false, // Reset acceptance
-          edited_answers: null, // Clear any previous negotiations
-          pending_approval: false, // Clear pending approvals
-          // Note: job.price (customer budget) is preserved
+          sp_accepted: false,
+          edited_answers: null,
+          pending_approval: false,
+          ...(dto.customerBudget != null && { price: dto.customerBudget }),
+          ...(dto.preferredDate && {
+            scheduled_at: new Date(dto.preferredDate),
+          }),
         },
       });
 
@@ -529,7 +609,12 @@ export class JobsService {
         },
       });
 
-      // 5. Create initial message
+      // 5. Create initial message (use updated budget/date if customer edited them)
+      const messageBudget =
+        dto.customerBudget != null ? dto.customerBudget : Number(job.price);
+      const messageDate = dto.preferredDate
+        ? new Date(dto.preferredDate)
+        : job.scheduled_at;
       await tx.messages.create({
         data: {
           chat_id: newChat.id,
@@ -541,9 +626,9 @@ export class JobsService {
             providerId: newProvider.id,
             answers: job.answers_json as Record<string, any>,
             location: job.location,
-            zipcode: '', // Not stored in job, would need to get from customer
-            preferredDate: job.scheduled_at?.toISOString(),
-            customerBudget: Number(job.price), // Include customer budget
+            zipcode: '',
+            preferredDate: messageDate?.toISOString(),
+            customerBudget: messageBudget,
           }),
         },
       });
